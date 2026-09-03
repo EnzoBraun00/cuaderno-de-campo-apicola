@@ -5,13 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestión Apícola Multi-Apiario</title>
 
-  <!-- Favicon para la pestaña del navegador -->
-  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="icon" type="image/png" href="logo.png?v=2">
 
-  <!-- PWA Metadata -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#f59e0b">
-  <link rel="apple-touch-icon" href="logo.png">
+  <link rel="apple-touch-icon" href="logo.png?v=2">
 
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -21,12 +19,10 @@
   <header>🐝 Sistema de Gestión Apícola</header>
   
   <div class="content">
-    <!-- Botón para instalar como App -->
     <button id="btnInstall" class="btn btn-block" style="display:none; background:#10b981; margin-bottom: 1rem;">
       📲 Instalar App en el Celular
     </button>
 
-    <!-- Selección de Apiario -->
     <div class="panel-control">
       <div>
         <label for="sheetSelect">Seleccionar Apiario (Hoja):</label>
@@ -36,12 +32,12 @@
       </div>
     </div>
 
-    <!-- Info, Búsqueda y Botones -->
     <div id="infoSection" style="display:none;">
       <div id="apiarioNombre" class="info-bar"></div>
       
-      <div class="search-box">
-        <input type="text" id="searchInput" placeholder="🔍 Filtrar por tarea, fecha u observación..." oninput="filtrarRegistros()">
+      <div class="search-box" style="display: flex; gap: 0.5rem;">
+        <input type="text" id="searchInput" placeholder="🔍 Filtrar por tarea, fecha u observación..." onkeyup="if(event.key === 'Enter') filtrarRegistros()" style="flex: 1;">
+        <button class="btn" style="background: #4b5563;" onclick="filtrarRegistros()">Buscar</button>
       </div>
 
       <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
@@ -50,7 +46,6 @@
       </div>
     </div>
 
-    <!-- Formulario Agregar / Editar -->
     <div class="form-container" id="formRegistro">
       <h3 id="formTitle" style="margin-bottom: 0.75rem;">Nuevo Registro</h3>
       <div class="form-group">
@@ -80,7 +75,6 @@
       <button class="btn btn-block btn-danger" onclick="ocultarFormulario()">Cancelar</button>
     </div>
 
-    <!-- Lista de Registros -->
     <div id="listaRegistros"></div>
   </div>
 </div>

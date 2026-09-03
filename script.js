@@ -47,7 +47,6 @@ async function cargarDatos() {
   lista.innerHTML = "Cargando registros...";
 
   try {
-    // Se agrega timestamp (_t) para evitar bloqueos por caché e intermitencia
     const url = `${SCRIPT_URL}?hoja=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
     
     const response = await fetch(url, {
@@ -91,35 +90,54 @@ function renderLista(registros) {
     return;
   }
 
-  registros.forEach(item => {
+  registros.forEach((item, index) => {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
       <div class="card-header">
-        <span>📅 ${item.Fecha}</span>
+        <span>📅 ${item.Fecha || ''}</span>
       </div>
       <div class="card-stats">
-        <span>🐝 Colmenas: <strong>${item.Colmenas}</strong></span>
-        <span>📦 Núcleos: <strong>${item.Núcleos}</strong></span>
+        <span>🐝 Colmenas: <strong>${item.Colmenas || 0}</strong></span>
+        <span>📦 Núcleos: <strong>${item.Núcleos || 0}</strong></span>
       </div>
       <div><strong>Tarea:</strong> ${item.Tarea || 'Sin especificar'}</div>
-      <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.25rem;">${item.Observaciones}</div>
+      <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.25rem;">${item.Observaciones || ''}</div>
       <div class="card-actions">
-        <button class="btn" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;" onclick='prepararEdicion(${JSON.stringify(item)})'>Editar</button>
+        <button class="btn btn-edit" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">Editar</button>
         <button class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;" onclick="eliminarRegistro('${item.Fecha}')">Eliminar</button>
       </div>
     `;
+
+    // Asignación segura del evento para evitar problemas con comillas en las observaciones
+    card.querySelector('.btn-edit').onclick = () => prepararEdicion(item);
+
     lista.appendChild(card);
   });
 }
 
 function filtrarRegistros() {
-  const query = document.getElementById('searchInput').value.toLowerCase();
+  const query = document.getElementById('searchInput').value.toLowerCase().trim();
+  
+  if (!query) {
+    renderLista(registrosGlobales);
+    return;
+  }
+
   const filtrados = registrosGlobales.filter(item => {
-    return item.Fecha.toLowerCase().includes(query) ||
-           item.Tarea.toLowerCase().includes(query) ||
-           item.Observaciones.toLowerCase().includes(query);
+    const fecha = String(item.Fecha || '').toLowerCase();
+    const tarea = String(item.Tarea || '').toLowerCase();
+    const obs = String(item.Observaciones || '').toLowerCase();
+    const colmenas = String(item.Colmenas || '');
+    const nucleos = String(item.Núcleos || '');
+
+    return fecha.includes(query) || 
+           tarea.includes(query) || 
+           obs.includes(query) ||
+           colmenas.includes(query) ||
+           nucleos.includes(query);
   });
+
   renderLista(filtrados);
 }
 
@@ -148,10 +166,10 @@ function prepararEdicion(item) {
   document.getElementById('formTitle').innerText = "Editar Registro";
   document.getElementById('inputFecha').value = item.Fecha;
   document.getElementById('inputFecha').disabled = true; 
-  document.getElementById('inputColmenas').value = item.Colmenas;
-  document.getElementById('inputNucleos').value = item.Núcleos;
-  document.getElementById('inputTarea').value = item.Tarea;
-  document.getElementById('inputObs').value = item.Observaciones;
+  document.getElementById('inputColmenas').value = item.Colmenas || 0;
+  document.getElementById('inputNucleos').value = item.Núcleos || 0;
+  document.getElementById('inputTarea').value = item.Tarea || "";
+  document.getElementById('inputObs').value = item.Observaciones || "";
   document.getElementById('formRegistro').style.display = 'block';
 }
 
@@ -240,38 +258,51 @@ if (btnInstall) {
 
 // --- FUNCIÓN PARA EXPORTAR A CSV / EXCEL ---
 function exportarCSV() {
+  // 1. Verificar que existan datos cargados
   if (!registrosGlobales || registrosGlobales.length === 0) {
-    alert("No hay registros disponibles para exportar.");
+    alert("No hay registros en pantalla para exportar. Selecciona un apiario primero.");
     return;
   }
 
-  const sheetName = document.getElementById('sheetSelect').value || "Apiario";
-  
-  // Encabezados del CSV
-  let csvContent = "\uFEFF"; // BOM para asegurar caracteres en español (ñ, tildes) en Excel
+  const select = document.getElementById('sheetSelect');
+  const sheetName = select.options[select.selectedIndex]?.text || "Apiario";
+
+  // 2. Encabezados del CSV con BOM (\uFEFF) para compatibilidad con Excel (acentos y ñ)
+  let csvContent = "\uFEFF";
   csvContent += "Fecha,Colmenas,Núcleos,Tarea,Observaciones\n";
 
-  // Filas de datos
+  // 3. Recorrer y formatear cada registro
   registrosGlobales.forEach(item => {
     const fecha = `"${item.Fecha || ''}"`;
     const colmenas = item.Colmenas || 0;
     const nucleos = item.Núcleos || 0;
-    const tarea = `"${(item.Tarea || '').replace(/"/g, '""')}"`;
-    const obs = `"${(item.Observaciones || '').replace(/"/g, '""')}"`;
-    
+    const tarea = `"${String(item.Tarea || '').replace(/"/g, '""')}"`;
+    const obs = `"${String(item.Observaciones || '').replace(/"/g, '""')}"`;
+
     csvContent += `${fecha},${colmenas},${nucleos},${tarea},${obs}\n`;
   });
 
-  // Crear descarga
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
-  const fileName = `${sheetName.replace(/[^a-zA-Z0-9]/g, '_')}_registros.csv`;
-  link.setAttribute('href', url);
-  link.setAttribute('download', fileName);
-  document.body.appendChild(link);
-  
-  link.click();
-  document.body.removeChild(link);
+  // 4. Crear el Blob y forzar la descarga
+  try {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    const cleanFileName = sheetName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    
+    link.href = url;
+    link.setAttribute('download', `${cleanFileName}_registros.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    
+    // Limpieza
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+  } catch (err) {
+    console.error("Error al exportar CSV:", err);
+    alert("Ocurrió un error al generar el archivo Excel/CSV.");
+  }
 }
