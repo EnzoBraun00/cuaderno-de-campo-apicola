@@ -1,0 +1,21 @@
+{
+  "name": "Cuaderno Apícola",
+  "short_name": "Apícola",
+  "description": "Sistema de gestión y registro de trabajos en apiarios",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f59e0b",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2983/2983780.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2983/2983780.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

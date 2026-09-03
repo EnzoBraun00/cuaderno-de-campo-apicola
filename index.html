@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión Apícola Multi-Apiario</title>
+
+  <!-- PWA Metadata -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#f59e0b">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2983/2983780.png">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-container">
+  <header>🐝 Sistema de Gestión Apícola</header>
+  
+  <div class="content">
+    <!-- Botón para instalar como App -->
+    <button id="btnInstall" class="btn btn-block" style="display:none; background:#10b981; margin-bottom: 1rem;">
+      📲 Instalar App en el Celular
+    </button>
+
+    <!-- Selección de Apiario -->
+    <div class="panel-control">
+      <div>
+        <label for="sheetSelect">Seleccionar Apiario (Hoja):</label>
+        <select id="sheetSelect" onchange="cargarDatos()">
+          <option value="">Cargando apiarios...</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Info, Búsqueda y Botones -->
+    <div id="infoSection" style="display:none;">
+      <div id="apiarioNombre" class="info-bar"></div>
+      
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="🔍 Filtrar por tarea, fecha u observación..." oninput="filtrarRegistros()">
+      </div>
+
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+        <button class="btn" style="flex:1;" onclick="mostrarFormulario()">+ Registrar Tarea</button>
+        <button class="btn" style="background:#059669;" onclick="exportarCSV()">📥 Excel / CSV</button>
+      </div>
+    </div>
+
+    <!-- Formulario Agregar / Editar -->
+    <div class="form-container" id="formRegistro">
+      <h3 id="formTitle" style="margin-bottom: 0.75rem;">Nuevo Registro</h3>
+      <div class="form-group">
+        <label>Fecha</label>
+        <input type="date" id="inputFecha">
+      </div>
+      <div class="form-group" style="display: flex; gap: 0.5rem;">
+        <div style="flex: 1;">
+          <label>Colmenas</label>
+          <input type="number" id="inputColmenas" value="0">
+        </div>
+        <div style="flex: 1;">
+          <label>Núcleos</label>
+          <input type="number" id="inputNucleos" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Tarea Realizada</label>
+        <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Inspección">
+      </div>
+      <div class="form-group">
+        <label>Observaciones</label>
+        <textarea id="inputObs" rows="3" placeholder="Detalles adicionales..."></textarea>
+      </div>
+      
+      <button class="btn btn-block" onclick="guardarRegistro()">Guardar Datos</button>
+      <button class="btn btn-block btn-danger" onclick="ocultarFormulario()">Cancelar</button>
+    </div>
+
+    <!-- Lista de Registros -->
+    <div id="listaRegistros"></div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
