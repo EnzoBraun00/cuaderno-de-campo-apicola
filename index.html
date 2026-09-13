@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestión Apícola Multi-Apiario</title>
 
+  <!-- Favicon para la pestaña del navegador -->
   <link rel="icon" type="image/png" href="logo.png?v=2">
 
+  <!-- PWA Metadata -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#f59e0b">
   <link rel="apple-touch-icon" href="logo.png?v=2">
@@ -16,70 +18,142 @@
 <body>
 
 <div class="app-container">
-  <header>🐝 Sistema de Gestión Apícola</header>
+  <header class="app-header">
+    <div class="header-content">
+      <span class="logo-icon">🐝</span>
+      <div>
+        <h1>Gestión Apícola</h1>
+        <p class="subtitle">Cuaderno de Campo</p>
+      </div>
+    </div>
+  </header>
   
-  <div class="content">
-    <button id="btnInstall" class="btn btn-block" style="display:none; background:#10b981; margin-bottom: 1rem;">
+  <main class="content">
+    <!-- Botón para instalar como App -->
+    <button id="btnInstall" class="btn btn-install btn-block" style="display:none;">
       📲 Instalar App en el Celular
     </button>
 
-    <div class="panel-control">
-      <div>
-        <label for="sheetSelect">Seleccionar Apiario (Hoja):</label>
+    <!-- Panel Principal de Selección y Orden de Apiarios -->
+    <section class="card panel-control">
+      <div class="panel-header">
+        <label for="sheetSelect" class="section-label">Apiario Actual</label>
+        <button class="btn-icon-text" onclick="abrirModalOrden()" title="Reordenar Lista">
+          ↕️ Reordenar
+        </button>
+      </div>
+
+      <div class="select-group">
         <select id="sheetSelect" onchange="cargarDatos()">
           <option value="">Cargando apiarios...</option>
         </select>
-      </div>
-    </div>
-
-    <div id="infoSection" style="display:none;">
-      <div id="apiarioNombre" class="info-bar"></div>
-      
-      <div class="search-box" style="display: flex; gap: 0.5rem;">
-        <input type="text" id="searchInput" placeholder="🔍 Filtrar por tarea, fecha u observación..." onkeyup="if(event.key === 'Enter') filtrarRegistros()" style="flex: 1;">
-        <button class="btn" style="background: #4b5563;" onclick="filtrarRegistros()">Buscar</button>
-      </div>
-
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-        <button class="btn" style="flex:1;" onclick="mostrarFormulario()">+ Registrar Tarea</button>
-        <button class="btn" style="background:#059669;" onclick="exportarCSV()">📥 Excel / CSV</button>
-      </div>
-    </div>
-
-    <div class="form-container" id="formRegistro">
-      <h3 id="formTitle" style="margin-bottom: 0.75rem;">Nuevo Registro</h3>
-      <div class="form-group">
-        <label>Fecha</label>
-        <input type="date" id="inputFecha">
-      </div>
-      <div class="form-group" style="display: flex; gap: 0.5rem;">
-        <div style="flex: 1;">
-          <label>Colmenas</label>
-          <input type="number" id="inputColmenas" value="0">
-        </div>
-        <div style="flex: 1;">
-          <label>Núcleos</label>
-          <input type="number" id="inputNucleos" value="0">
+        <div class="action-buttons">
+          <button class="btn btn-action btn-add" title="Nuevo Apiario" onclick="crearApiario()">➕</button>
+          <button class="btn btn-action btn-edit" title="Renombrar Apiario" onclick="renombrarApiario()">✏️</button>
+          <button class="btn btn-action btn-delete" title="Eliminar Apiario" onclick="eliminarApiario()">🗑️</button>
         </div>
       </div>
-      <div class="form-group">
-        <label>Tarea Realizada</label>
-        <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Inspección">
+
+      <div class="sort-bar">
+        <label for="sortSelect">Ordenar por:</label>
+        <select id="sortSelect" onchange="cambiarOrdenApiarios(this.value)">
+          <option value="custom">Personalizado (Manual)</option>
+          <option value="alpha-asc">Nombre (A - Z)</option>
+          <option value="alpha-desc">Nombre (Z - A)</option>
+        </select>
       </div>
-      <div class="form-group">
-        <label>Observaciones</label>
-        <textarea id="inputObs" rows="3" placeholder="Detalles adicionales..."></textarea>
+    </section>
+
+    <!-- Barra del Apiario Activo y Botón Nueva Tarea -->
+    <div id="infoSection" class="info-section" style="display:none;">
+      <div class="apiario-header">
+        <div id="apiarioNombre" class="info-bar"></div>
+        <button class="btn btn-primary btn-new-task" onclick="mostrarFormulario()">
+          ➕ Agregar Nueva Tarea
+        </button>
       </div>
-      
-      <button class="btn btn-block" onclick="guardarRegistro()">Guardar Datos</button>
-      <button class="btn btn-block btn-danger" onclick="ocultarFormulario()">Cancelar</button>
     </div>
 
-    <div id="listaRegistros"></div>
+    <!-- Formulario Agregar / Editar Registro -->
+    <div class="form-container card" id="formRegistro">
+      <div class="form-header">
+        <h3 id="formTitle">Nuevo Registro de Tarea</h3>
+        <button type="button" class="btn-close" onclick="ocultarFormulario()">✕</button>
+      </div>
+      
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="inputFecha">Fecha</label>
+          <input type="date" id="inputFecha">
+        </div>
+        <div class="form-group flex-row">
+          <div class="flex-1">
+            <label for="inputColmenas">Colmenas</label>
+            <input type="number" id="inputColmenas" value="0" min="0">
+          </div>
+          <div class="flex-1">
+            <label for="inputNucleos">Núcleos</label>
+            <input type="number" id="inputNucleos" value="0" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="inputTarea">Tarea Realizada</label>
+          <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Alimentación, Inspección">
+        </div>
+        <div class="form-group">
+          <label for="inputObs">Observaciones</label>
+          <textarea id="inputObs" rows="3" placeholder="Detalles o notas relevantes de la inspección..."></textarea>
+        </div>
+      </div>
+      
+      <div class="form-actions">
+        <button class="btn btn-secondary" onclick="ocultarFormulario()">Cancelar</button>
+        <button class="btn btn-primary flex-1" onclick="guardarRegistro()">Guardar Datos</button>
+      </div>
+    </div>
+
+    <!-- Lista de Registros -->
+    <div id="listaRegistros" class="registros-list"></div>
+  </main>
+</div>
+
+<!-- Modal para Reordenar Apiarios Manualmente -->
+<div id="modalReordenar" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Ordenar Apiarios</h3>
+      <button class="btn-close" onclick="cerrarModalOrden()">✕</button>
+    </div>
+    <p class="modal-subtitle">Arrastra o ajusta las posiciones de tus apiarios:</p>
+    
+    <ul id="listaOrdenable" class="sortable-list">
+      <!-- Se puebla dinámicamente -->
+    </ul>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarModalOrden()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarOrdenManual()">Guardar Orden</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Prompt para Crear / Renombrar Apiarios -->
+<div id="modalInput" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modalTitle">Nuevo Apiario</h3>
+      <button class="btn-close" onclick="cerrarModalPrompt()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="modalTextVal" class="modal-input" placeholder="Nombre del apiario...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarModalPrompt()">Cancelar</button>
+      <button class="btn btn-primary" id="btnModalAceptar">Aceptar</button>
+    </div>
   </div>
 </div>
 
 <script src="script.js"></script>
-
 </body>
 </html>

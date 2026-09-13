@@ -20,6 +20,12 @@ async function cargarListaHojas() {
 
     const hojas = await response.json();
 
+    if (hojas.error) {
+      alert("Error desde Google Apps Script: " + hojas.error);
+      select.innerHTML = '<option value="">Error al cargar apiarios</option>';
+      return;
+    }
+
     select.innerHTML = '<option value="">-- Selecciona un Apiario --</option>';
     hojas.forEach(hoja => {
       const option = document.createElement('option');
@@ -41,41 +47,41 @@ async function cargarDatos() {
   if (!sheetName) {
     infoSection.style.display = 'none';
     lista.innerHTML = "";
+    ocultarFormulario();
     return;
   }
 
-  lista.innerHTML = "Cargando registros...";
+  lista.innerHTML = "<p style='text-align:center; padding:1.5rem; color:#64748b;'>Cargando registros del apiario...</p>";
 
   try {
     const url = `${SCRIPT_URL}?hoja=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow'
-    });
+    console.log("🔍 Consultando URL:", url);
+
+    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
 
     if (!response.ok) throw new Error("Error en la respuesta de la red");
 
     const data = await response.json();
 
+    // IMPRIMIR LA RESPUESTA COMPLETA EN CONSOLA
+    console.log("📦 DATOS RECIBIDOS DESDE GOOGLE APPS SCRIPT:", data);
+    console.log("📏 Tipo de dato:", typeof data, " | Es Array?:", Array.isArray(data));
+
     if (data.error) {
-      alert(data.error);
+      alert("Error reportado por el backend: " + data.error);
       lista.innerHTML = "";
       return;
     }
 
-    registrosGlobales = data;
-    infoSection.style.display = 'block';
-    
-    if (data.length > 0 && data[0].Apiario) {
-      document.getElementById('apiarioNombre').innerText = "Apiario: " + data[0].Apiario;
-    } else {
-      document.getElementById('apiarioNombre').innerText = "Apiario: " + sheetName;
-    }
+    registrosGlobales = Array.isArray(data) ? data : (data.registros || data.datos || []);
+    console.log("📊 Registros procesados finales:", registrosGlobales);
 
+    infoSection.style.display = 'block';
+    document.getElementById('apiarioNombre').innerText = "📌 Apiario: " + sheetName;
+    
     renderLista(registrosGlobales);
   } catch (err) {
-    console.error("Detalle del error al cargar:", err);
+    console.error("❌ Detalle del error al cargar:", err);
     alert("Error al cargar los datos del apiario. Reintenta la selección.");
     lista.innerHTML = "";
   }
@@ -85,35 +91,58 @@ function renderLista(registros) {
   const lista = document.getElementById('listaRegistros');
   lista.innerHTML = "";
 
-  if (registros.length === 0) {
-    lista.innerHTML = "<p style='text-align:center; color:#6b7280; padding:1rem;'>No hay registros guardados en esta hoja.</p>";
+  if (!registros || registros.length === 0) {
+    lista.innerHTML = "<div class='card' style='text-align:center; color:#64748b; padding:2rem;'>Sin registros en este apiario. Presiona <strong>'➕ Agregar Nueva Tarea'</strong> para comenzar.</div>";
     return;
   }
 
-  registros.forEach((item, index) => {
+  registros.forEach((item) => {
+    // Si viene como array o como objeto mapeado
+    const fecha = item.fecha || (Array.isArray(item) ? item[0] : '') || 'Sin fecha';
+    const colmenas = item.colmenas !== undefined ? item.colmenas : (Array.isArray(item) ? item[1] : 0);
+    const nucleos = item.nucleos !== undefined ? item.nucleos : (Array.isArray(item) ? item[2] : 0);
+    const tarea = item.tarea || (Array.isArray(item) ? item[3] : '') || 'Sin especificar';
+    const obs = item.obs || (Array.isArray(item) ? item[4] : '') || '';
+
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      <div class="card-header">
-        <span>📅 ${item.Fecha || ''}</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; font-weight:700; color:#d97706;">
+        <span>📅 ${fecha}</span>
       </div>
-      <div class="card-stats">
-        <span>🐝 Colmenas: <strong>${item.Colmenas || 0}</strong></span>
-        <span>📦 Núcleos: <strong>${item.Núcleos || 0}</strong></span>
+      <div style="display:flex; gap:1rem; font-size:0.9rem; background:#f8fafc; padding:0.5rem 0.75rem; border-radius:6px; margin-bottom:0.5rem;">
+        <span>🐝 Colmenas: <strong>${colmenas}</strong></span>
+        <span>📦 Núcleos: <strong>${nucleos}</strong></span>
       </div>
-      <div><strong>Tarea:</strong> ${item.Tarea || 'Sin especificar'}</div>
-      <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.25rem;">${item.Observaciones || ''}</div>
-      <div class="card-actions">
-        <button class="btn btn-edit" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">Editar</button>
-        <button class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;" onclick="eliminarRegistro('${item.Fecha}')">Eliminar</button>
+      <div style="font-size:0.95rem; font-weight:600; margin-bottom:0.25rem;">📝 Tarea: ${tarea}</div>
+      ${obs ? `<div style="font-size:0.85rem; color:#64748b; margin-top:0.25rem;">${obs}</div>` : ''}
+      <div style="display:flex; gap:0.5rem; margin-top:0.85rem; border-top:1px solid #f1f5f9; padding-top:0.5rem;">
+        <button class="btn btn-secondary btn-edit-card" style="padding:0.35rem 0.75rem; font-size:0.8rem;">✏️ Editar</button>
+        <button class="btn btn-danger btn-delete-card" style="padding:0.35rem 0.75rem; font-size:0.8rem;">🗑️ Eliminar</button>
       </div>
     `;
 
-    // Asignación segura del evento para evitar problemas con comillas en las observaciones
-    card.querySelector('.btn-edit').onclick = () => prepararEdicion(item);
+    card.querySelector('.btn-edit-card').onclick = () => prepararEdicion(item);
+    card.querySelector('.btn-delete-card').onclick = () => eliminarRegistro(fecha);
 
     lista.appendChild(card);
   });
+}
+
+function prepararEdicionDirecta(fecha, colmenas, nucleos, tarea, obs) {
+  editMode = true;
+  registroEditandoFecha = fecha;
+  
+  document.getElementById('formTitle').innerText = "Editar Registro";
+  document.getElementById('inputFecha').value = fecha;
+  document.getElementById('inputFecha').disabled = true; 
+  document.getElementById('inputColmenas').value = colmenas || 0;
+  document.getElementById('inputNucleos').value = nucleos || 0;
+  document.getElementById('inputTarea').value = tarea || "";
+  document.getElementById('inputObs').value = obs || "";
+  
+  document.getElementById('formRegistro').style.display = 'block';
+  document.getElementById('formRegistro').scrollIntoView({ behavior: 'smooth' });
 }
 
 function filtrarRegistros() {
@@ -163,14 +192,27 @@ function limpiarFormulario() {
 
 function prepararEdicion(item) {
   editMode = true;
+  
+  const getVal = (...keys) => {
+    for (const k of keys) {
+      if (item[k] !== undefined && item[k] !== null) return item[k];
+    }
+    return "";
+  };
+
+  const fecha = getVal('Fecha', 'fecha');
+  
+  registroEditandoFecha = fecha;
   document.getElementById('formTitle').innerText = "Editar Registro";
-  document.getElementById('inputFecha').value = item.Fecha;
+  document.getElementById('inputFecha').value = fecha;
   document.getElementById('inputFecha').disabled = true; 
-  document.getElementById('inputColmenas').value = item.Colmenas || 0;
-  document.getElementById('inputNucleos').value = item.Núcleos || 0;
-  document.getElementById('inputTarea').value = item.Tarea || "";
-  document.getElementById('inputObs').value = item.Observaciones || "";
+  document.getElementById('inputColmenas').value = getVal('Colmenas', 'colmenas') || 0;
+  document.getElementById('inputNucleos').value = getVal('Núcleos', 'Nucleos', 'núcleos', 'nucleos') || 0;
+  document.getElementById('inputTarea').value = getVal('Tarea', 'tarea') || "";
+  document.getElementById('inputObs').value = getVal('Observaciones', 'observaciones', 'obs') || "";
+  
   document.getElementById('formRegistro').style.display = 'block';
+  document.getElementById('formRegistro').scrollIntoView({ behavior: 'smooth' });
 }
 
 async function guardarRegistro() {
@@ -207,8 +249,13 @@ async function enviarPeticion(payload) {
   try {
     const response = await fetch(SCRIPT_URL, {
       method: "POST",
+      redirect: "follow",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
       body: JSON.stringify(payload)
     });
+    
     const result = await response.json();
     
     if (result.error) {
@@ -219,14 +266,13 @@ async function enviarPeticion(payload) {
       cargarDatos();
     }
   } catch (err) {
-    alert("Operación completada.");
-    ocultarFormulario();
-    cargarDatos();
+    console.error("Error en enviarPeticion:", err);
+    alert("Error de conexión o al procesar la respuesta.");
   }
 }
 
-// --- REGISTRO DE SERVICE WORKER (PWA) ---
-if ('serviceWorker' in navigator) {
+// --- REGISTRO DE SERVICE WORKER (Sólo en servidor HTTP/HTTPS) ---
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then(() => console.log('Service Worker registrado correctamente.'))
@@ -256,53 +302,237 @@ if (btnInstall) {
   });
 }
 
-// --- FUNCIÓN PARA EXPORTAR A CSV / EXCEL ---
-function exportarCSV() {
-  // 1. Verificar que existan datos cargados
-  if (!registrosGlobales || registrosGlobales.length === 0) {
-    alert("No hay registros en pantalla para exportar. Selecciona un apiario primero.");
+// --- FUNCIONES DE GESTIÓN DE APIARIOS ---
+function pedirTextoModal(titulo, valorInicial, callback) {
+  const modal = document.getElementById('modalInput');
+  const titleEl = document.getElementById('modalTitle');
+  const inputEl = document.getElementById('modalTextVal');
+  const btnAceptar = document.getElementById('btnModalAceptar');
+
+  titleEl.innerText = titulo;
+  inputEl.value = valorInicial || '';
+  modal.style.display = 'flex';
+
+  btnAceptar.onclick = async () => {
+    const val = inputEl.value.trim();
+    modal.style.display = 'none';
+    if (val) await callback(val);
+  };
+}
+
+function cerrarModalPrompt() {
+  document.getElementById('modalInput').style.display = 'none';
+}
+
+async function crearApiario() {
+  pedirTextoModal("Ingresa el nombre del nuevo Apiario:", "", async (nombre) => {
+    const payload = {
+      action: "addSheet",
+      nombreApiario: nombre
+    };
+    await enviarPeticionGenerica(payload, async () => {
+      await cargarListaHojas();
+      document.getElementById('sheetSelect').value = nombre;
+      cargarDatos();
+    });
+  });
+}
+
+async function renombrarApiario() {
+  const sheetSelect = document.getElementById('sheetSelect');
+  const actual = sheetSelect.value;
+
+  if (!actual) {
+    alert("Selecciona primero un apiario para renombrar.");
     return;
   }
 
+  pedirTextoModal(`Nuevo nombre para "${actual}":`, actual, async (nuevoNombre) => {
+    if (nuevoNombre === actual) return;
+    const payload = {
+      action: "renameSheet",
+      hoja: actual,
+      nuevoNombre: nuevoNombre
+    };
+    await enviarPeticionGenerica(payload, async () => {
+      await cargarListaHojas();
+      sheetSelect.value = nuevoNombre;
+      cargarDatos();
+    });
+  });
+}
+
+async function eliminarApiario() {
+  const sheetSelect = document.getElementById('sheetSelect');
+  const actual = sheetSelect.value;
+
+  if (!actual) {
+    alert("Selecciona un apiario para eliminar.");
+    return;
+  }
+
+  if (!confirm(`¿Estás seguro de que deseas ELIMINAR el apiario "${actual}" y todos sus registros? Esta acción no se puede deshacer.`)) {
+    return;
+  }
+
+  const payload = {
+    action: "deleteSheet",
+    hoja: actual
+  };
+
+  await enviarPeticionGenerica(payload, async () => {
+    await cargarListaHojas();
+    document.getElementById('infoSection').style.display = 'none';
+    document.getElementById('listaRegistros').innerHTML = '';
+  });
+}
+
+async function enviarPeticionGenerica(payload, onSuccess) {
+  try {
+    const response = await fetch(SCRIPT_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+
+    if (result.error) {
+      alert("Error: " + result.error);
+    } else {
+      alert(result.message || "Operación realizada con éxito");
+      if (onSuccess) await onSuccess();
+    }
+  } catch (err) {
+    console.error("Error en la petición:", err);
+    alert("Ocurrió un error al procesar la solicitud.");
+  }
+}
+
+let listaHojasOriginal = [];
+let ordenPersonalizado = [];
+
+async function cargarListaHojas() {
   const select = document.getElementById('sheetSelect');
-  const sheetName = select.options[select.selectedIndex]?.text || "Apiario";
+  try {
+    const url = `${SCRIPT_URL}?action=getSheets&_t=${Date.now()}`;
+    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
 
-  // 2. Encabezados del CSV con BOM (\uFEFF) para compatibilidad con Excel (acentos y ñ)
-  let csvContent = "\uFEFF";
-  csvContent += "Fecha,Colmenas,Núcleos,Tarea,Observaciones\n";
+    if (!response.ok) throw new Error("Error en la red");
 
-  // 3. Recorrer y formatear cada registro
-  registrosGlobales.forEach(item => {
-    const fecha = `"${item.Fecha || ''}"`;
-    const colmenas = item.Colmenas || 0;
-    const nucleos = item.Núcleos || 0;
-    const tarea = `"${String(item.Tarea || '').replace(/"/g, '""')}"`;
-    const obs = `"${String(item.Observaciones || '').replace(/"/g, '""')}"`;
+    const data = await response.json();
+    listaHojasOriginal = data.sheets || [];
+    ordenPersonalizado = data.customOrder || [];
 
-    csvContent += `${fecha},${colmenas},${nucleos},${tarea},${obs}\n`;
+    // Aplicar el criterio de orden seleccionado actualmente
+    const criterio = document.getElementById('sortSelect')?.value || 'custom';
+    aplicarOrdenYRenderizar(criterio);
+
+  } catch (err) {
+    console.error("Detalle del error al obtener hojas:", err);
+    select.innerHTML = '<option value="">Error al cargar apiarios</option>';
+  }
+}
+
+function aplicarOrdenYRenderizar(criterio) {
+  const select = document.getElementById('sheetSelect');
+  const valorSeleccionado = select.value;
+  let hojasOrdenadas = [...listaHojasOriginal];
+
+  if (criterio === 'alpha-asc') {
+    hojasOrdenadas.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  } else if (criterio === 'alpha-desc') {
+    hojasOrdenadas.sort((a, b) => b.localeCompare(a, undefined, { sensitivity: 'base' }));
+  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
+    hojasOrdenadas.sort((a, b) => {
+      let idxA = ordenPersonalizado.indexOf(a);
+      let idxB = ordenPersonalizado.indexOf(b);
+      if (idxA === -1) idxA = 999;
+      if (idxB === -1) idxB = 999;
+      return idxA - idxB;
+    });
+  }
+
+  select.innerHTML = '<option value="">-- Selecciona un Apiario --</option>';
+  hojasOrdenadas.forEach(hoja => {
+    const option = document.createElement('option');
+    option.value = hoja;
+    option.textContent = hoja;
+    select.appendChild(option);
   });
 
-  // 4. Crear el Blob y forzar la descarga
-  try {
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    const cleanFileName = sheetName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    
-    link.href = url;
-    link.setAttribute('download', `${cleanFileName}_registros.csv`);
-    
-    document.body.appendChild(link);
-    link.click();
-    
-    // Limpieza
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-  } catch (err) {
-    console.error("Error al exportar CSV:", err);
-    alert("Ocurrió un error al generar el archivo Excel/CSV.");
+  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
+    select.value = valorSeleccionado;
   }
+}
+
+function cambiarOrdenApiarios(criterio) {
+  aplicarOrdenYRenderizar(criterio);
+}
+
+// --- MODAL Y LOGICA DE REORDENAMIENTO MANUAL ---
+
+function abrirModalOrden() {
+  const lista = document.getElementById('listaOrdenable');
+  lista.innerHTML = '';
+
+  const criterio = document.getElementById('sortSelect').value;
+  let hojasActuales = [...listaHojasOriginal];
+
+  if (criterio === 'custom' && ordenPersonalizado.length > 0) {
+    hojasActuales.sort((a, b) => {
+      let idxA = ordenPersonalizado.indexOf(a);
+      let idxB = ordenPersonalizado.indexOf(b);
+      if (idxA === -1) idxA = 999;
+      if (idxB === -1) idxB = 999;
+      return idxA - idxB;
+    });
+  }
+
+  hojasActuales.forEach((hoja) => {
+    const li = document.createElement('li');
+    li.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.75rem; border-bottom:1px solid #eee;";
+    li.dataset.nombre = hoja;
+    li.innerHTML = `
+      <span>📌 ${hoja}</span>
+      <div>
+        <button class="btn" style="padding:0.2rem 0.4rem; font-size:0.75rem;" onclick="moverElemento(this, -1)">▲</button>
+        <button class="btn" style="padding:0.2rem 0.4rem; font-size:0.75rem;" onclick="moverElemento(this, 1)">▼</button>
+      </div>
+    `;
+    lista.appendChild(li);
+  });
+
+  document.getElementById('modalReordenar').style.display = 'flex';
+}
+
+function cerrarModalOrden() {
+  document.getElementById('modalReordenar').style.display = 'none';
+}
+
+function moverElemento(btn, direccion) {
+  const li = btn.closest('li');
+  if (direccion === -1 && li.previousElementSibling) {
+    li.parentNode.insertBefore(li, li.previousElementSibling);
+  } else if (direccion === 1 && li.nextElementSibling) {
+    li.parentNode.insertBefore(li.nextElementSibling, li);
+  }
+}
+
+async function guardarOrdenManual() {
+  const items = document.querySelectorAll('#listaOrdenable li');
+  const nuevoOrden = Array.from(items).map(li => li.dataset.nombre);
+
+  ordenPersonalizado = nuevoOrden;
+  document.getElementById('sortSelect').value = 'custom';
+  aplicarOrdenYRenderizar('custom');
+  cerrarModalOrden();
+
+  // Guardar en Apps Script
+  await enviarPeticionGenerica({
+    action: "saveSheetsOrder",
+    order: nuevoOrden
+  });
 }
