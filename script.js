@@ -50,78 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 // CARGA Y GESTIÓN DE HOJAS / APIARIOS
 // ==========================================
-async function cargarListaHojas() {
-  try {
-    const response = await fetch(`${SCRIPT_URL}?action=getSheets`);
-    
-    // Obtener texto crudo primero para validar la respuesta
-    const text = await response.text();
-    
-    // Si la respuesta empieza con <!DOCTYPE, Google devolvió una página HTML (error/login)
-    if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
-      console.error("Respuesta HTML recibida de Google Apps Script:", text);
-      throw new Error("El script devolvió HTML. Revisa los permisos de acceso ('Cualquiera') en Google Apps Script.");
-    }
 
-    const data = JSON.parse(text);
 
-    if (data.error) {
-      throw new Error(data.error);
-    }
 
-    // Lógica para llenar el selector de hojas
-    const select = document.getElementById('sheetSelect');
-    if (select && data.sheets) {
-      select.innerHTML = '<option value="">-- Seleccionar Apiario --</option>';
-      data.sheets.forEach(hoja => {
-        const option = document.createElement('option');
-        option.value = hoja;
-        option.textContent = hoja;
-        select.appendChild(option);
-      });
-    }
-  } catch (error) {
-    console.error("Detalle del error al obtener hojas:", error);
-  }
-}
-
-function aplicarOrdenYRenderizar(criterio) {
-  const select = document.getElementById('sheetSelect');
-  if (!select) return;
-
-  const valorSeleccionado = select.value;
-  let hojasOrdenadas = [...listaHojasOriginal];
-
-  if (criterio === 'alpha-asc') {
-    hojasOrdenadas.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  } else if (criterio === 'alpha-desc') {
-    hojasOrdenadas.sort((a, b) => b.localeCompare(a, undefined, { sensitivity: 'base' }));
-  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
-    hojasOrdenadas.sort((a, b) => {
-      let idxA = ordenPersonalizado.indexOf(a);
-      let idxB = ordenPersonalizado.indexOf(b);
-      if (idxA === -1) idxA = 999;
-      if (idxB === -1) idxB = 999;
-      return idxA - idxB;
-    });
-  }
-
-  select.innerHTML = '<option value="">-- Selecciona un Apiario --</option>';
-  hojasOrdenadas.forEach(hoja => {
-    const option = document.createElement('option');
-    option.value = hoja;
-    option.textContent = hoja;
-    select.appendChild(option);
-  });
-
-  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
-    select.value = valorSeleccionado;
-  }
-}
-
-function cambiarOrdenApiarios(criterio) {
-  aplicarOrdenYRenderizar(criterio);
-}
 
 // ==========================================
 // CONSULTA Y RENDERIZADO DE REGISTROS
@@ -429,43 +360,6 @@ async function enviarPeticionGenerica(payload, onSuccess) {
   }
 }
 
-// ==========================================
-// REORDENAMIENTO MANUAL DE APIARIOS
-// ==========================================
-function abrirModalOrden() {
-  const lista = document.getElementById('listaOrdenable');
-  lista.innerHTML = '';
-
-  const criterio = document.getElementById('sortSelect').value;
-  let hojasActuales = [...listaHojasOriginal];
-
-  if (criterio === 'custom' && ordenPersonalizado.length > 0) {
-    hojasActuales.sort((a, b) => {
-      let idxA = ordenPersonalizado.indexOf(a);
-      let idxB = ordenPersonalizado.indexOf(b);
-      if (idxA === -1) idxA = 999;
-      if (idxB === -1) idxB = 999;
-      return idxA - idxB;
-    });
-  }
-
-  hojasActuales.forEach((hoja) => {
-    const li = document.createElement('li');
-    li.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.75rem; border-bottom:1px solid #eee;";
-    li.dataset.nombre = hoja;
-    li.innerHTML = `
-      <span>📌 ${hoja}</span>
-      <div>
-        <button class="btn" style="padding:0.2rem 0.4rem; font-size:0.75rem;" onclick="moverElemento(this, -1)">▲</button>
-        <button class="btn" style="padding:0.2rem 0.4rem; font-size:0.75rem;" onclick="moverElemento(this, 1)">▼</button>
-      </div>
-    `;
-    lista.appendChild(li);
-  });
-
-  document.getElementById('modalReordenar').style.display = 'flex';
-}
-
 function cerrarModalOrden() {
   document.getElementById('modalReordenar').style.display = 'none';
 }
@@ -761,4 +655,177 @@ function mostrarEstadoGuardado(mensaje) {
     if (header) header.appendChild(statusEl);
   }
   statusEl.innerText = mensaje;
+}
+
+// ==========================================
+// CARGA Y GESTIÓN DE HOJAS / APIARIOS
+// ==========================================
+async function cargarListaHojas() {
+  try {
+    const response = await fetch(`${SCRIPT_URL}?action=getSheets`);
+    const text = await response.text();
+    
+    // 1. Manejo preventivo de respuestas HTML (login/errores GAS)
+    if (text.trim().startsWith("<")) {
+      console.error("Respuesta no válida del servidor:", text);
+      throw new Error("El script devolvió HTML. Verifica los permisos de la Web App en Google Apps Script.");
+    }
+
+    const data = JSON.parse(text);
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    if (Array.isArray(data.sheets)) {
+      listaHojasOriginal = data.sheets;
+
+      // 2. Recuperar y sincronizar orden personalizado con Set (O(1) lookups)
+      const ordenGuardado = JSON.parse(localStorage.getItem('orden_apiarios_custom') || '[]');
+      
+      if (ordenGuardado.length > 0) {
+        const hojasSet = new Set(listaHojasOriginal);
+        const apiariosValidos = ordenGuardado.filter(hoja => hojasSet.has(hoja));
+        const apiariosNuevos = listaHojasOriginal.filter(hoja => !ordenGuardado.includes(hoja));
+        
+        ordenPersonalizado = [...apiariosValidos, ...apiariosNuevos];
+      } else {
+        ordenPersonalizado = [...listaHojasOriginal];
+      }
+
+      // 3. Sincronizar el selector de orden e intentar aplicar el criterio activo
+      const sortSelect = document.getElementById('sortSelect');
+      const criterioActual = sortSelect ? sortSelect.value : 'custom';
+
+      aplicarOrdenYRenderizar(criterioActual);
+    }
+  } catch (error) {
+    console.error("Detalle del error al obtener hojas:", error);
+  }
+}
+
+function aplicarOrdenYRenderizar(criterio) {
+  const select = document.getElementById('sheetSelect');
+  if (!select || !listaHojasOriginal || listaHojasOriginal.length === 0) return;
+
+  const valorSeleccionado = select.value;
+  let hojasOrdenadas = [...listaHojasOriginal];
+
+  if (criterio === 'alpha-asc' || criterio === 'A-Z') {
+    hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
+  } else if (criterio === 'alpha-desc' || criterio === 'Z-A') {
+    hojasOrdenadas.sort((a, b) => b.localeCompare(a, 'es', { numeric: true, sensitivity: 'base' }));
+  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
+    hojasOrdenadas.sort((a, b) => {
+      let idxA = ordenPersonalizado.indexOf(a);
+      let idxB = ordenPersonalizado.indexOf(b);
+      if (idxA === -1) idxA = 999;
+      if (idxB === -1) idxB = 999;
+      return idxA - idxB;
+    });
+  }
+
+  // Volver a renderizar el desplegable
+  select.innerHTML = '<option value="">-- Seleccionar Apiario --</option>';
+  hojasOrdenadas.forEach(hoja => {
+    const option = document.createElement('option');
+    option.value = hoja;
+    option.textContent = hoja;
+    select.appendChild(option);
+  });
+
+  // Restaurar el apiario seleccionado que el usuario tenía en pantalla
+  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
+    select.value = valorSeleccionado;
+  }
+}
+
+function cambiarOrdenApiarios(criterio) {
+  aplicarOrdenYRenderizar(criterio);
+}
+
+// Variable global para controlar el estado de ordenación alternada
+let ordenAscendente = true;
+
+// ==========================================
+// REORDENAMIENTO MANUAL DE APIARIOS
+// ==========================================
+
+// 1. Abrir el modal y poblar la lista con los apiarios actuales
+function reordenarHojas() {
+  const modal = document.getElementById('modalReordenar');
+  const lista = document.getElementById('listaOrdenable');
+
+  if (!listaHojasOriginal || listaHojasOriginal.length === 0) {
+    alert("No hay apiarios cargados para reordenar.");
+    return;
+  }
+
+  // Limpiar lista del modal
+  lista.innerHTML = '';
+
+  // Usar el orden personalizado actual o la lista original
+  const listaParaMostrar = ordenPersonalizado.length > 0 ? ordenPersonalizado : listaHojasOriginal;
+
+  listaParaMostrar.forEach((hoja) => {
+    const li = document.createElement('li');
+    li.dataset.nombre = hoja;
+    li.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; margin-bottom: 0.4rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;";
+    
+    li.innerHTML = `
+      <span style="font-weight: 600; color: #334155;">📌 ${hoja}</span>
+      <div style="display: flex; gap: 0.25rem;">
+        <button type="button" class="btn" style="padding: 0.2rem 0.5rem; background: #cbd5e1;" onclick="moverElemento(this, -1)">⬆️</button>
+        <button type="button" class="btn" style="padding: 0.2rem 0.5rem; background: #cbd5e1;" onclick="moverElemento(this, 1)">⬇️</button>
+      </div>
+    `;
+    lista.appendChild(li);
+  });
+
+  if (modal) modal.style.display = 'flex';
+}
+
+// 2. Mover un elemento hacia arriba (-1) o hacia abajo (1)
+function moverElemento(btn, direccion) {
+  const li = btn.closest('li');
+  if (direccion === -1 && li.previousElementSibling) {
+    li.parentNode.insertBefore(li, li.previousElementSibling);
+  } else if (direccion === 1 && li.nextElementSibling) {
+    li.parentNode.insertBefore(li.nextElementSibling, li);
+  }
+}
+
+// 3. Cerrar la ventana modal
+function cerrarModalOrden() {
+  const modal = document.getElementById('modalReordenar');
+  if (modal) modal.style.display = 'none';
+}
+
+// 4. Guardar la nueva secuencia elegida por el usuario
+async function guardarOrdenManual() {
+  const items = document.querySelectorAll('#listaOrdenable li');
+  const nuevoOrden = Array.from(items).map(li => li.dataset.nombre);
+
+  if (nuevoOrden.length === 0) return;
+
+  // Actualizar variables de estado
+  ordenPersonalizado = nuevoOrden;
+  listaHojasOriginal = [...nuevoOrden];
+
+  // Forzar la selección a "Personalizado" y renderizar
+  const sortSelect = document.getElementById('sortSelect');
+  if (sortSelect) sortSelect.value = 'custom';
+  
+  aplicarOrdenYRenderizar('custom');
+  cerrarModalOrden();
+
+  // Guardar la preferencia en LocalStorage para que persista al recargar la app
+  localStorage.setItem('orden_apiarios_custom', JSON.stringify(nuevoOrden));
+
+  // Opcional: enviar al backend si tu Apps Script soporta guardar el orden
+  try {
+    await enviarPeticionGenerica({ action: "saveSheetsOrder", order: nuevoOrden });
+  } catch (e) {
+    console.log("Orden guardado localmente en el dispositivo.");
+  }
 }
