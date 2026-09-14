@@ -26,6 +26,33 @@
         <p class="subtitle">Cuaderno de Campo</p>
       </div>
     </div>
+    
+    <!-- Acceso a Entrada Manual / Dictado Offline -->
+    <div style="margin-top: 0.75rem;">
+      <button id="btnToggleOffline" class="btn" style="background-color: #d97706; color: white; display: inline-flex; align-items: center; gap: 0.5rem; width: 100%; justify-content: center; font-weight: 600;">
+        📝 <span>Abrir Entrada Manual / Offline</span>
+      </button>
+    </div>
+
+    <!-- Sección Offline (Escondida por defecto con display: none) -->
+    <div id="seccionOffline" class="card" style="display: none; margin-top: 1rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 8px; background-color: #ffffff; color: #1f2937;">
+      <h3 style="margin-top:0; color:#b45309; font-size:1.1rem;">📝 Dictado / Nota rápida</h3>
+      
+      <p style="font-size: 0.85rem; color: #4b5563; margin-bottom:0.5rem;">
+        Toca el recuadro y presiona el 🎙️ <b>micrófono del teclado de tu celular</b> para dictar de forma local sin internet.
+      </p>
+
+      <textarea id="txtNotaOffline" rows="3" placeholder="Ej: Apiario Ahlers 35 colmenas 10 núcleos cosechó 60 medias alzas..." style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-family: inherit;"></textarea>
+
+      <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+        <button id="btnGuardarNota" class="btn" style="background-color: #2563eb; color: white; flex: 1;">
+          💾 Guardar
+        </button>
+        <button id="btnSincronizar" class="btn" style="background-color: #16a34a; color: white; flex: 1;">
+          🔄 Sincronizar (<span id="cantPendientes">0</span>)
+        </button>
+      </div>
+    </div>
   </header>
   
   <main class="content">
@@ -75,42 +102,47 @@
     </div>
 
     <!-- Formulario Agregar / Editar Registro -->
-    <div class="form-container card" id="formRegistro">
-      <div class="form-header">
-        <h3 id="formTitle">Nuevo Registro de Tarea</h3>
-        <button type="button" class="btn-close" onclick="ocultarFormulario()">✕</button>
+    <!-- Formulario Agregar / Editar Registro con indicador de guardado en tiempo real -->
+<div class="form-container card" id="formRegistro" style="display:none;">
+  <div class="form-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div style="display:flex; align-items:center;">
+      <h3 id="formTitle" style="margin:0;">Nuevo Registro de Tarea</h3>
+      <!-- Aquí se insertará dinámicamente el estado: ✅ Guardado automáticamente -->
+      <span id="autoSaveStatus" style="font-size: 0.8rem; margin-left: 0.75rem;"></span>
+    </div>
+    <button type="button" class="btn-close" onclick="ocultarFormulario()">✕</button>
+  </div>
+
+  <div class="form-grid">
+    <div class="form-group">
+      <label for="inputFecha">Fecha</label>
+      <input type="date" id="inputFecha">
+    </div>
+    <div class="form-group flex-row">
+      <div class="flex-1">
+        <label for="inputColmenas">Colmenas</label>
+        <input type="number" id="inputColmenas" value="0" min="0">
       </div>
-      
-      <div class="form-grid">
-        <div class="form-group">
-          <label for="inputFecha">Fecha</label>
-          <input type="date" id="inputFecha">
-        </div>
-        <div class="form-group flex-row">
-          <div class="flex-1">
-            <label for="inputColmenas">Colmenas</label>
-            <input type="number" id="inputColmenas" value="0" min="0">
-          </div>
-          <div class="flex-1">
-            <label for="inputNucleos">Núcleos</label>
-            <input type="number" id="inputNucleos" value="0" min="0">
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="inputTarea">Tarea Realizada</label>
-          <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Alimentación, Inspección">
-        </div>
-        <div class="form-group">
-          <label for="inputObs">Observaciones</label>
-          <textarea id="inputObs" rows="3" placeholder="Detalles o notas relevantes de la inspección..."></textarea>
-        </div>
-      </div>
-      
-      <div class="form-actions">
-        <button class="btn btn-secondary" onclick="ocultarFormulario()">Cancelar</button>
-        <button class="btn btn-primary flex-1" onclick="guardarRegistro()">Guardar Datos</button>
+      <div class="flex-1">
+        <label for="inputNucleos">Núcleos</label>
+        <input type="number" id="inputNucleos" value="0" min="0">
       </div>
     </div>
+    <div class="form-group">
+      <label for="inputTarea">Tarea Realizada</label>
+      <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Alimentación, Inspección">
+    </div>
+    <div class="form-group">
+      <label for="inputObs">Observaciones</label>
+      <textarea id="inputObs" rows="3" placeholder="Detalles o notas relevantes de la inspección..."></textarea>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn btn-secondary" onclick="ocultarFormulario()">Cerrar</button>
+    <button class="btn btn-primary flex-1" onclick="guardarRegistro()">Guardar Manualmente</button>
+  </div>
+</div>
 
     <!-- Lista de Registros -->
     <div id="listaRegistros" class="registros-list"></div>
