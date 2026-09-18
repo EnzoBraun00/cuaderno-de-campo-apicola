@@ -14,7 +14,6 @@ window.onload = async function() {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Manejo de la sección offline (mostrar / ocultar)
   const btnToggle = document.getElementById('btnToggleOffline');
   const seccionOffline = document.getElementById('seccionOffline');
 
@@ -30,7 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Eventos de la sección offline
   const btnGuardar = document.getElementById('btnGuardarNota');
   if (btnGuardar) btnGuardar.addEventListener('click', procesarONoGuardarNota);
 
@@ -40,19 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
   actualizarContadorPendientes();
   activarGuardadoEnTiempoReal();
 
-  // Escuchar cuando regresa la conexión a internet
   window.addEventListener('online', () => {
     console.log("📶 Conexión restablecida. Sincronizando notas pendientes...");
     sincronizarNotasPendientes();
   });
 });
-
-// ==========================================
-// CARGA Y GESTIÓN DE HOJAS / APIARIOS
-// ==========================================
-
-
-
 
 // ==========================================
 // CONSULTA Y RENDERIZADO DE REGISTROS
@@ -111,11 +101,11 @@ function renderLista(registros) {
   }
 
   registros.forEach((item) => {
-    const fecha = item.fecha || item.Fecha || (Array.isArray(item) ? item[0] : '') || 'Sin fecha';
-    const colmenas = item.colmenas !== undefined ? item.colmenas : (item.Colmenas !== undefined ? item.Colmenas : (Array.isArray(item) ? item[1] : 0));
-    const nucleos = item.nucleos !== undefined ? item.nucleos : (item.Núcleos !== undefined ? item.Núcleos : (Array.isArray(item) ? item[2] : 0));
-    const tarea = item.tarea || item.Tarea || (Array.isArray(item) ? item[3] : '') || 'Sin especificar';
-    const obs = item.obs || item.Observaciones || item.observaciones || (Array.isArray(item) ? item[4] : '') || '';
+    const fecha = item.fecha || item.Fecha || (Array.isArray(item) ? item[1] : '') || 'Sin fecha';
+    const colmenas = item.colmenas !== undefined ? item.colmenas : (item.Colmenas !== undefined ? item.Colmenas : (Array.isArray(item) ? item[2] : 0));
+    const nucleos = item.nucleos !== undefined ? item.nucleos : (item.Núcleos !== undefined ? item.Núcleos : (Array.isArray(item) ? item[3] : 0));
+    const tarea = item.tarea || item.Tarea || (Array.isArray(item) ? item[4] : '') || 'Sin especificar';
+    const obs = item.obs || item.Observaciones || item.observaciones || (Array.isArray(item) ? item[5] : '') || '';
 
     const card = document.createElement('div');
     card.className = 'card';
@@ -194,23 +184,16 @@ function limpiarFormulario() {
 function prepararEdicion(item) {
   editMode = true;
   
-  const getVal = (...keys) => {
-    for (const k of keys) {
-      if (item[k] !== undefined && item[k] !== null) return item[k];
-    }
-    return "";
-  };
-
-  const fecha = getVal('Fecha', 'fecha');
+  const fecha = item.fecha || item.Fecha || "";
   
   registroEditandoFecha = fecha;
   document.getElementById('formTitle').innerText = "Editar Registro";
   document.getElementById('inputFecha').value = fecha;
   document.getElementById('inputFecha').disabled = true; 
-  document.getElementById('inputColmenas').value = getVal('Colmenas', 'colmenas') || 0;
-  document.getElementById('inputNucleos').value = getVal('Núcleos', 'Nucleos', 'núcleos', 'nucleos') || 0;
-  document.getElementById('inputTarea').value = getVal('Tarea', 'tarea') || "";
-  document.getElementById('inputObs').value = getVal('Observaciones', 'observaciones', 'obs') || "";
+  document.getElementById('inputColmenas').value = item.colmenas !== undefined ? item.colmenas : (item.Colmenas || 0);
+  document.getElementById('inputNucleos').value = item.nucleos !== undefined ? item.nucleos : (item.Núcleos || 0);
+  document.getElementById('inputTarea').value = item.tarea || item.Tarea || "";
+  document.getElementById('inputObs').value = item.obs || item.Observaciones || "";
   
   document.getElementById('formRegistro').style.display = 'block';
   document.getElementById('formRegistro').scrollIntoView({ behavior: 'smooth' });
@@ -218,6 +201,8 @@ function prepararEdicion(item) {
 
 async function guardarRegistro() {
   const hoja = document.getElementById('sheetSelect').value;
+  if (!hoja) return alert("Selecciona primero un apiario.");
+
   const payload = {
     hoja: hoja,
     action: editMode ? "edit" : "add",
@@ -293,8 +278,11 @@ function cerrarModalPrompt() {
   document.getElementById('modalInput').style.display = 'none';
 }
 
+// ==========================================
+// MODALES Y OPERACIONES SOBRE DESPLEGABLE / TABLA_TAREAS
+// ==========================================
 async function crearApiario() {
-  pedirTextoModal("Ingresa el nombre del nuevo Apiario:", "", async (nombre) => {
+  pedirTextoModal("Ingresa el nombre del nuevo Apiario para el desplegable:", "", async (nombre) => {
     const payload = { action: "addSheet", nombreApiario: nombre };
     await enviarPeticionGenerica(payload, async () => {
       await cargarListaHojas();
@@ -308,7 +296,7 @@ async function renombrarApiario() {
   const sheetSelect = document.getElementById('sheetSelect');
   const actual = sheetSelect.value;
 
-  if (!actual) return alert("Selecciona primero un apiario para renombrar.");
+  if (!actual) return alert("Selecciona primero un apiario del desplegable para renombrar.");
 
   pedirTextoModal(`Nuevo nombre para "${actual}":`, actual, async (nuevoNombre) => {
     if (nuevoNombre === actual) return;
@@ -325,9 +313,9 @@ async function eliminarApiario() {
   const sheetSelect = document.getElementById('sheetSelect');
   const actual = sheetSelect.value;
 
-  if (!actual) return alert("Selecciona un apiario para eliminar.");
+  if (!actual) return alert("Selecciona un apiario del desplegable para eliminar.");
 
-  if (!confirm(`¿Estás seguro de que deseas ELIMINAR el apiario "${actual}" y todos sus registros?`)) return;
+  if (!confirm(`¿Estás seguro de que deseas ELIMINAR el apiario "${actual}" y todas sus tareas de Tabla_tareas?`)) return;
 
   const payload = { action: "deleteSheet", hoja: actual };
 
@@ -339,6 +327,13 @@ async function eliminarApiario() {
 }
 
 async function enviarPeticionGenerica(payload, onSuccess) {
+  const btnAceptarModal = document.getElementById('btnModalAceptar');
+  const selectApiario = document.getElementById('sheetSelect');
+
+  // Bloquear modal y selector
+  setCargando(btnAceptarModal, true, "⏳ Procesando...");
+  if (selectApiario) selectApiario.disabled = true;
+
   try {
     const response = await fetch(SCRIPT_URL, {
       method: "POST",
@@ -357,32 +352,11 @@ async function enviarPeticionGenerica(payload, onSuccess) {
   } catch (err) {
     console.error("Error en la petición:", err);
     alert("Ocurrió un error al procesar la solicitud.");
+  } finally {
+    // Desbloquear modal y selector
+    setCargando(btnAceptarModal, false);
+    if (selectApiario) selectApiario.disabled = false;
   }
-}
-
-function cerrarModalOrden() {
-  document.getElementById('modalReordenar').style.display = 'none';
-}
-
-function moverElemento(btn, direccion) {
-  const li = btn.closest('li');
-  if (direccion === -1 && li.previousElementSibling) {
-    li.parentNode.insertBefore(li, li.previousElementSibling);
-  } else if (direccion === 1 && li.nextElementSibling) {
-    li.parentNode.insertBefore(li.nextElementSibling, li);
-  }
-}
-
-async function guardarOrdenManual() {
-  const items = document.querySelectorAll('#listaOrdenable li');
-  const nuevoOrden = Array.from(items).map(li => li.dataset.nombre);
-
-  ordenPersonalizado = nuevoOrden;
-  document.getElementById('sortSelect').value = 'custom';
-  aplicarOrdenYRenderizar('custom');
-  cerrarModalOrden();
-
-  await enviarPeticionGenerica({ action: "saveSheetsOrder", order: nuevoOrden });
 }
 
 // ==========================================
@@ -390,26 +364,24 @@ async function guardarOrdenManual() {
 // ==========================================
 async function procesarONoGuardarNota() {
   const inputTexto = document.getElementById('txtNotaOffline');
+  const btnGuardarNota = document.getElementById('btnGuardarNota');
   const texto = inputTexto ? inputTexto.value.trim() : '';
   
   const select = document.getElementById('sheetSelect');
-  // Si no hay opción seleccionada en el dropdown, tomar la primera opción válida disponible
-  let hoja = select ? select.value : '';
-  if (!hoja && select && select.options.length > 1) {
-    hoja = select.options[1].value;
-  }
+  const hoja = select ? select.value : '';
 
-  if (!texto) {
-    alert("Escribe o dicta una nota antes de guardar.");
-    return;
-  }
+  if (!hoja) return alert("Selecciona primero un apiario.");
+  if (!texto) return alert("Escribe o dicta una nota antes de guardar.");
 
   if (!navigator.onLine) {
     guardarEnLocalStorage(texto, hoja);
     if (inputTexto) inputTexto.value = "";
-    alert("📶 Sin conexión: La nota se guardó en el dispositivo. Se sincronizará al recuperar la señal.");
+    alert("📶 Sin conexión: Guardado localmente.");
     return;
   }
+
+  // Bloquear botón de guardar nota
+  setCargando(btnGuardarNota, true, "⏳ Enviando...");
 
   try {
     const response = await fetch(SCRIPT_URL, {
@@ -426,19 +398,16 @@ async function procesarONoGuardarNota() {
     } else {
       alert(res.message || "Nota procesada correctamente.");
       if (inputTexto) inputTexto.value = "";
-      if (res.hoja && typeof cargarDatos === "function") {
-        document.getElementById('sheetSelect').value = res.hoja;
-        cargarDatos();
-      }
+      if (typeof cargarDatos === "function") cargarDatos();
     }
   } catch (err) {
-    console.warn("Fallo en la red al enviar, guardando offline:", err);
     guardarEnLocalStorage(texto, hoja);
     if (inputTexto) inputTexto.value = "";
-    alert("⚠️ Fallo de conexión. Nota guardada en el dispositivo para sincronizar luego.");
+    alert("⚠️ Fallo de conexión. Guardado en el dispositivo.");
+  } finally {
+    setCargando(btnGuardarNota, false);
   }
 }
-
 function guardarEnLocalStorage(texto, hoja) {
   const pendientes = JSON.parse(localStorage.getItem('notas_apiario_pendientes') || '[]');
   pendientes.push({
@@ -486,13 +455,13 @@ async function sincronizarNotasPendientes() {
       });
 
       const textResponse = await response.text();
-let res;
-try {
-  res = JSON.parse(textResponse);
-} catch (e) {
-  console.error("El servidor devolvió HTML en lugar de JSON:", textResponse);
-  throw new Error("Respuesta no válida del servidor.");
-}
+      let res;
+      try {
+        res = JSON.parse(textResponse);
+      } catch (e) {
+        console.error("El servidor devolvió HTML en lugar de JSON:", textResponse);
+        throw new Error("Respuesta no válida del servidor.");
+      }
       if (!res.error) {
         exitosos++;
       } else {
@@ -665,7 +634,6 @@ async function cargarListaHojas() {
     const response = await fetch(`${SCRIPT_URL}?action=getSheets`);
     const text = await response.text();
     
-    // 1. Manejo preventivo de respuestas HTML (login/errores GAS)
     if (text.trim().startsWith("<")) {
       console.error("Respuesta no válida del servidor:", text);
       throw new Error("El script devolvió HTML. Verifica los permisos de la Web App en Google Apps Script.");
@@ -680,7 +648,6 @@ async function cargarListaHojas() {
     if (Array.isArray(data.sheets)) {
       listaHojasOriginal = data.sheets;
 
-      // 2. Recuperar y sincronizar orden personalizado con Set (O(1) lookups)
       const ordenGuardado = JSON.parse(localStorage.getItem('orden_apiarios_custom') || '[]');
       
       if (ordenGuardado.length > 0) {
@@ -693,7 +660,6 @@ async function cargarListaHojas() {
         ordenPersonalizado = [...listaHojasOriginal];
       }
 
-      // 3. Sincronizar el selector de orden e intentar aplicar el criterio activo
       const sortSelect = document.getElementById('sortSelect');
       const criterioActual = sortSelect ? sortSelect.value : 'custom';
 
@@ -725,7 +691,6 @@ function aplicarOrdenYRenderizar(criterio) {
     });
   }
 
-  // Volver a renderizar el desplegable
   select.innerHTML = '<option value="">-- Seleccionar Apiario --</option>';
   hojasOrdenadas.forEach(hoja => {
     const option = document.createElement('option');
@@ -734,7 +699,6 @@ function aplicarOrdenYRenderizar(criterio) {
     select.appendChild(option);
   });
 
-  // Restaurar el apiario seleccionado que el usuario tenía en pantalla
   if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
     select.value = valorSeleccionado;
   }
@@ -744,14 +708,9 @@ function cambiarOrdenApiarios(criterio) {
   aplicarOrdenYRenderizar(criterio);
 }
 
-// Variable global para controlar el estado de ordenación alternada
-let ordenAscendente = true;
-
 // ==========================================
 // REORDENAMIENTO MANUAL DE APIARIOS
 // ==========================================
-
-// 1. Abrir el modal y poblar la lista con los apiarios actuales
 function reordenarHojas() {
   const modal = document.getElementById('modalReordenar');
   const lista = document.getElementById('listaOrdenable');
@@ -761,10 +720,7 @@ function reordenarHojas() {
     return;
   }
 
-  // Limpiar lista del modal
   lista.innerHTML = '';
-
-  // Usar el orden personalizado actual o la lista original
   const listaParaMostrar = ordenPersonalizado.length > 0 ? ordenPersonalizado : listaHojasOriginal;
 
   listaParaMostrar.forEach((hoja) => {
@@ -785,7 +741,6 @@ function reordenarHojas() {
   if (modal) modal.style.display = 'flex';
 }
 
-// 2. Mover un elemento hacia arriba (-1) o hacia abajo (1)
 function moverElemento(btn, direccion) {
   const li = btn.closest('li');
   if (direccion === -1 && li.previousElementSibling) {
@@ -795,37 +750,53 @@ function moverElemento(btn, direccion) {
   }
 }
 
-// 3. Cerrar la ventana modal
 function cerrarModalOrden() {
   const modal = document.getElementById('modalReordenar');
   if (modal) modal.style.display = 'none';
 }
 
-// 4. Guardar la nueva secuencia elegida por el usuario
 async function guardarOrdenManual() {
   const items = document.querySelectorAll('#listaOrdenable li');
   const nuevoOrden = Array.from(items).map(li => li.dataset.nombre);
 
   if (nuevoOrden.length === 0) return;
 
-  // Actualizar variables de estado
   ordenPersonalizado = nuevoOrden;
   listaHojasOriginal = [...nuevoOrden];
 
-  // Forzar la selección a "Personalizado" y renderizar
   const sortSelect = document.getElementById('sortSelect');
   if (sortSelect) sortSelect.value = 'custom';
   
   aplicarOrdenYRenderizar('custom');
   cerrarModalOrden();
 
-  // Guardar la preferencia en LocalStorage para que persista al recargar la app
   localStorage.setItem('orden_apiarios_custom', JSON.stringify(nuevoOrden));
 
-  // Opcional: enviar al backend si tu Apps Script soporta guardar el orden
   try {
     await enviarPeticionGenerica({ action: "saveSheetsOrder", order: nuevoOrden });
   } catch (e) {
     console.log("Orden guardado localmente en el dispositivo.");
+  }
+}
+
+// Deshabilita o habilita elementos dinámicamente para evitar múltiples clics
+function setCargando(elemento, cargando, textoCargando = "⏳ Procesando...") {
+  if (!elemento) return;
+  
+  if (cargando) {
+    elemento.dataset.originalText = elemento.innerHTML;
+    elemento.disabled = true;
+    elemento.style.opacity = "0.65";
+    elemento.style.cursor = "not-allowed";
+    if (elemento.tagName === "BUTTON") {
+      elemento.innerHTML = textoCargando;
+    }
+  } else {
+    elemento.disabled = false;
+    elemento.style.opacity = "1";
+    elemento.style.cursor = "pointer";
+    if (elemento.dataset.originalText) {
+      elemento.innerHTML = elemento.dataset.originalText;
+    }
   }
 }
