@@ -677,9 +677,9 @@ function aplicarOrdenYRenderizar(criterio) {
   const valorSeleccionado = select.value;
   let hojasOrdenadas = [...listaHojasOriginal];
 
-  if (criterio === 'alpha-asc' || criterio === 'A-Z') {
+  if (criterio === 'alpha-asc') {
     hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
-  } else if (criterio === 'alpha-desc' || criterio === 'Z-A') {
+  } else if (criterio === 'alpha-desc') {
     hojasOrdenadas.sort((a, b) => b.localeCompare(a, 'es', { numeric: true, sensitivity: 'base' }));
   } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
     hojasOrdenadas.sort((a, b) => {
@@ -691,11 +691,26 @@ function aplicarOrdenYRenderizar(criterio) {
     });
   }
 
-  select.innerHTML = '<option value="">-- Seleccionar Apiario --</option>';
-  hojasOrdenadas.forEach(hoja => {
+  // Renderizar opciones con colores intercalados
+  select.innerHTML = '<option value="" style="background-color: #ffffff; color: #64748b;">-- Seleccionar Apiario --</option>';
+
+  hojasOrdenadas.forEach((hoja, index) => {
     const option = document.createElement('option');
     option.value = hoja;
-    option.textContent = hoja;
+    option.textContent = `🐝 ${hoja}`;
+
+    // 🎨 Intercalar colores de fondo entre apiarios
+    if (index % 2 === 0) {
+      option.style.backgroundColor = '#fef3c7'; // Amarillo miel claro
+      option.style.color = '#78350f';
+    } else {
+      option.style.backgroundColor = '#e0f2fe'; // Azul pastel claro
+      option.style.color = '#0369a1';
+    }
+
+    option.style.padding = '10px';
+    option.style.fontWeight = 'bold';
+
     select.appendChild(option);
   });
 

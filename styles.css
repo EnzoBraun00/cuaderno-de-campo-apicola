@@ -92,12 +92,6 @@ body {
   transition: box-shadow 0.2s ease;
 }
 
-/* Panel de Selección */
-.panel-control { 
-  background: #ffffff; 
-  border-top: 4px solid var(--primary);
-}
-
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -111,17 +105,6 @@ body {
   color: var(--text-muted); 
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.select-group {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 0.35rem;
 }
 
 .sort-bar {
@@ -382,4 +365,46 @@ select:focus, input:focus, textarea:focus {
 @keyframes modalUp {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* Contenedor completo a lo ancho */
+.panel-control {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+}
+
+/* Grupo del selector a ancho completo */
+.select-group {
+  display: flex;
+  flex-direction: column; /* Apila el selector y los botones para aprovechar todo el ancho */
+  width: 100%;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* El selector de apiarios ocupará todo el ancho */
+#sheetSelect {
+  width: 100% !important;
+  font-size: 1.1rem !important; /* Texto más grande para lectura rápida */
+  padding: 0.85rem 0.75rem !important;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 2px solid #d97706;
+  background-color: #fffbeb;
+  color: #1e293b;
+  box-sizing: border-box;
+}
+
+/* Botones de acción alineados debajo ocupando todo el ancho */
+.action-buttons {
+  display: flex;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.action-buttons .btn {
+  flex: 1; /* Reparte los botones ➕ ✏️ 🗑️ en partes iguales */
+  padding: 0.75rem 0;
+  font-size: 1.2rem;
 }
