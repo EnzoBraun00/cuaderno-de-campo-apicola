@@ -114,7 +114,7 @@ body {
   font-size: 0.85rem;
   color: var(--text-muted);
   padding-top: 0.75rem;
-  border-top: 1px border-subtle #f1f5f9;
+  border-top: 1px solid #f1f5f9;
 }
 
 .sort-bar select {
@@ -183,16 +183,6 @@ select:focus, input:focus, textarea:focus {
   background: var(--danger-hover); 
 }
 
-.btn-action {
-  padding: 0.65rem 0.8rem;
-  font-size: 1rem;
-  border-radius: 8px;
-}
-
-.btn-add { background: #2563eb; color: white; }
-.btn-edit { background: #f59e0b; color: white; }
-.btn-delete { background: var(--danger); color: white; }
-
 .btn-icon-text {
   background: transparent;
   border: none;
@@ -217,6 +207,77 @@ select:focus, input:focus, textarea:focus {
   color: white;
   margin-bottom: 1rem;
   padding: 0.85rem;
+}
+
+/* Selector Personalizado a Ancho Completo */
+.custom-select-wrapper {
+  position: relative;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.custom-select-trigger {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background-color: #fffbeb;
+  border: 2px solid #d97706;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.custom-select-options {
+  position: absolute;
+  top: 105%;
+  left: 0;
+  right: 0;
+  background-color: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 99;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Tarjetas alternadas con colores para opciones de Apiarios en Móvil */
+.custom-option {
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.custom-option:active {
+  transform: scale(0.98);
+}
+
+.opcion-amarilla {
+  background-color: #fef3c7;
+  color: #92400e;
+  border-left: 4px solid #f59e0b;
+}
+
+.opcion-azul {
+  background-color: #e0f2fe;
+  color: #075985;
+  border-left: 4px solid #0284c7;
+}
+
+.custom-option:hover {
+  filter: brightness(0.95);
 }
 
 /* Info de Apiario y Nueva Tarea */
@@ -367,44 +428,8 @@ select:focus, input:focus, textarea:focus {
   to { opacity: 1; transform: scale(1); }
 }
 
-/* Contenedor completo a lo ancho */
 .panel-control {
   width: 100%;
   box-sizing: border-box;
-  padding: 0.75rem;
-}
-
-/* Grupo del selector a ancho completo */
-.select-group {
-  display: flex;
-  flex-direction: column; /* Apila el selector y los botones para aprovechar todo el ancho */
-  width: 100%;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-/* El selector de apiarios ocupará todo el ancho */
-#sheetSelect {
-  width: 100% !important;
-  font-size: 1.1rem !important; /* Texto más grande para lectura rápida */
-  padding: 0.85rem 0.75rem !important;
-  font-weight: 700;
-  border-radius: 8px;
-  border: 2px solid #d97706;
-  background-color: #fffbeb;
-  color: #1e293b;
-  box-sizing: border-box;
-}
-
-/* Botones de acción alineados debajo ocupando todo el ancho */
-.action-buttons {
-  display: flex;
-  width: 100%;
-  gap: 0.5rem;
-}
-
-.action-buttons .btn {
-  flex: 1; /* Reparte los botones ➕ ✏️ 🗑️ en partes iguales */
-  padding: 0.75rem 0;
-  font-size: 1.2rem;
+  padding: 0.85rem;
 }

@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // CONSULTA Y RENDERIZADO DE REGISTROS
 // ==========================================
 async function cargarDatos() {
-  const sheetName = document.getElementById('sheetSelect').value;
+  const sheetName = getApiarioSeleccionado();
   const lista = document.getElementById('listaRegistros');
   const infoSection = document.getElementById('infoSection');
 
@@ -199,28 +199,55 @@ function prepararEdicion(item) {
   document.getElementById('formRegistro').scrollIntoView({ behavior: 'smooth' });
 }
 
+let enviandoRegistro = false;
+
 async function guardarRegistro() {
-  const hoja = document.getElementById('sheetSelect').value;
-  if (!hoja) return alert("Selecciona primero un apiario.");
+  if (enviandoRegistro) return;
+
+  const hoja = getApiarioSeleccionado();
+  const fecha = document.getElementById('inputFecha').value;
+
+  if (!hoja) return alert("Por favor, selecciona un apiario.");
+  if (!fecha) return alert("Selecciona una fecha válida.");
+
+  if (typeof timerAutoGuardado !== 'undefined' && timerAutoGuardado) {
+    clearTimeout(timerAutoGuardado);
+  }
 
   const payload = {
     hoja: hoja,
     action: editMode ? "edit" : "add",
-    Fecha: document.getElementById('inputFecha').value,
+    Fecha: fecha,
     Colmenas: document.getElementById('inputColmenas').value,
     Núcleos: document.getElementById('inputNucleos').value,
     Tarea: document.getElementById('inputTarea').value,
     Observaciones: document.getElementById('inputObs').value
   };
 
-  if (!payload.Fecha) return alert("Selecciona una fecha válida");
-  await enviarPeticion(payload);
+  enviandoRegistro = true;
+  const btnGuardar = document.querySelector('#formRegistro .btn-primary');
+  let textoOriginal = "";
+  if (btnGuardar) {
+    textoOriginal = btnGuardar.innerText;
+    btnGuardar.disabled = true;
+    btnGuardar.innerText = "⏳ Guardando...";
+  }
+
+  try {
+    await enviarPeticion(payload);
+  } finally {
+    enviandoRegistro = false;
+    if (btnGuardar) {
+      btnGuardar.disabled = false;
+      btnGuardar.innerText = textoOriginal;
+    }
+  }
 }
 
 async function eliminarRegistro(fecha) {
   if (!confirm(`¿Seguro que deseas eliminar el registro de la fecha ${fecha}?`)) return;
 
-  const hoja = document.getElementById('sheetSelect').value;
+  const hoja = getApiarioSeleccionado();
   const payload = {
     hoja: hoja,
     action: "delete",
@@ -255,120 +282,112 @@ async function enviarPeticion(payload) {
 }
 
 // ==========================================
-// MODALES Y OPERACIONES DE APIARIOS
+// OBTENER APIARIO ACTIVO
 // ==========================================
-function pedirTextoModal(titulo, valorInicial, callback) {
-  const modal = document.getElementById('modalInput');
-  const titleEl = document.getElementById('modalTitle');
-  const inputEl = document.getElementById('modalTextVal');
-  const btnAceptar = document.getElementById('btnModalAceptar');
+function getApiarioSeleccionado() {
+  const select = document.getElementById('sheetSelect');
+  
+  if (select && select.value) {
+    return select.value;
+  }
+  
+  const triggerSpan = document.querySelector('#customSelectHeader span');
+  if (triggerSpan) {
+    const textoHeader = triggerSpan.textContent
+      .replace('- ', '')
+      .replace('-- Seleccionar Apiario --', '')
+      .trim();
+    if (textoHeader) return textoHeader;
+  }
 
-  titleEl.innerText = titulo;
-  inputEl.value = valorInicial || '';
-  modal.style.display = 'flex';
+  if (listaHojasOriginal && listaHojasOriginal.length > 0) {
+    return ordenPersonalizado.length > 0 ? ordenPersonalizado[0] : listaHojasOriginal[0];
+  }
 
-  btnAceptar.onclick = async () => {
-    const val = inputEl.value.trim();
-    modal.style.display = 'none';
-    if (val) await callback(val);
-  };
+  return "";
 }
 
-function cerrarModalPrompt() {
-  document.getElementById('modalInput').style.display = 'none';
+function seleccionarApiarioCustom(val, texto) {
+  const selectOculto = document.getElementById('sheetSelect');
+  const triggerHeader = document.querySelector('#customSelectHeader span');
+
+  if (selectOculto) {
+    selectOculto.value = val;
+    if (triggerHeader) triggerHeader.textContent = texto;
+    toggleCustomDropdown();
+    cargarDatos();
+  }
 }
 
-// ==========================================
-// MODALES Y OPERACIONES SOBRE DESPLEGABLE / TABLA_TAREAS
-// ==========================================
-async function crearApiario() {
-  pedirTextoModal("Ingresa el nombre del nuevo Apiario para el desplegable:", "", async (nombre) => {
-    const payload = { action: "addSheet", nombreApiario: nombre };
-    await enviarPeticionGenerica(payload, async () => {
-      await cargarListaHojas();
-      document.getElementById('sheetSelect').value = nombre;
-      cargarDatos();
-    });
-  });
-}
-
-async function renombrarApiario() {
-  const sheetSelect = document.getElementById('sheetSelect');
-  const actual = sheetSelect.value;
-
-  if (!actual) return alert("Selecciona primero un apiario del desplegable para renombrar.");
-
-  pedirTextoModal(`Nuevo nombre para "${actual}":`, actual, async (nuevoNombre) => {
-    if (nuevoNombre === actual) return;
-    const payload = { action: "renameSheet", hoja: actual, nuevoNombre: nuevoNombre };
-    await enviarPeticionGenerica(payload, async () => {
-      await cargarListaHojas();
-      sheetSelect.value = nuevoNombre;
-      cargarDatos();
-    });
-  });
-}
-
-async function eliminarApiario() {
-  const sheetSelect = document.getElementById('sheetSelect');
-  const actual = sheetSelect.value;
-
-  if (!actual) return alert("Selecciona un apiario del desplegable para eliminar.");
-
-  if (!confirm(`¿Estás seguro de que deseas ELIMINAR el apiario "${actual}" y todas sus tareas de Tabla_tareas?`)) return;
-
-  const payload = { action: "deleteSheet", hoja: actual };
-
-  await enviarPeticionGenerica(payload, async () => {
-    await cargarListaHojas();
-    document.getElementById('infoSection').style.display = 'none';
-    document.getElementById('listaRegistros').innerHTML = '';
-  });
-}
-
-async function enviarPeticionGenerica(payload, onSuccess) {
-  const btnAceptarModal = document.getElementById('btnModalAceptar');
-  const selectApiario = document.getElementById('sheetSelect');
-
-  // Bloquear modal y selector
-  setCargando(btnAceptarModal, true, "⏳ Procesando...");
-  if (selectApiario) selectApiario.disabled = true;
-
-  try {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-
-    if (result.error) {
-      alert("Error: " + result.error);
-    } else {
-      alert(result.message || "Operación realizada con éxito");
-      if (onSuccess) await onSuccess();
-    }
-  } catch (err) {
-    console.error("Error en la petición:", err);
-    alert("Ocurrió un error al procesar la solicitud.");
-  } finally {
-    // Desbloquear modal y selector
-    setCargando(btnAceptarModal, false);
-    if (selectApiario) selectApiario.disabled = false;
+function toggleCustomDropdown() {
+  const optionsDiv = document.getElementById('customSelectOptions');
+  if (optionsDiv) {
+    optionsDiv.style.display = optionsDiv.style.display === 'none' ? 'block' : 'none';
   }
 }
 
 // ==========================================
-// NOTAS Y ENTRADA MANUAL / OFFLINE (LOCALSTORAGE)
+// RENDERIZADO Y AUTO-SELECCIÓN INICIAL
+// ==========================================
+function aplicarOrdenYRenderizar(criterio) {
+  const selectOculto = document.getElementById('sheetSelect');
+  const customOptions = document.getElementById('customSelectOptions');
+  if (!selectOculto || !customOptions || !listaHojasOriginal || listaHojasOriginal.length === 0) return;
+
+  let valorSeleccionado = selectOculto.value;
+  let hojasOrdenadas = [...listaHojasOriginal];
+
+  if (criterio === 'alpha-asc') {
+    hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
+  } else if (criterio === 'alpha-desc') {
+    hojasOrdenadas.sort((a, b) => b.localeCompare(a, 'es', { numeric: true, sensitivity: 'base' }));
+  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
+    hojasOrdenadas.sort((a, b) => {
+      let idxA = ordenPersonalizado.indexOf(a);
+      let idxB = ordenPersonalizado.indexOf(b);
+      if (idxA === -1) idxA = 999;
+      if (idxB === -1) idxB = 999;
+      return idxA - idxB;
+    });
+  }
+
+  selectOculto.innerHTML = '';
+  customOptions.innerHTML = '';
+
+  if (!valorSeleccionado && hojasOrdenadas.length > 0) {
+    valorSeleccionado = hojasOrdenadas[0];
+  }
+
+  hojasOrdenadas.forEach((hoja, index) => {
+    const optionObj = document.createElement('option');
+    optionObj.value = hoja;
+    optionObj.textContent = hoja;
+    selectOculto.appendChild(optionObj);
+
+    const div = document.createElement('div');
+    const claseColor = (index % 2 === 0) ? 'opcion-amarilla' : 'opcion-azul';
+    div.className = `custom-option ${claseColor}`;
+    div.textContent = ` ${hoja}`;
+    div.onclick = () => seleccionarApiarioCustom(hoja, ` ${hoja}`);
+
+    customOptions.appendChild(div);
+  });
+
+  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
+    selectOculto.value = valorSeleccionado;
+    const triggerHeader = document.querySelector('#customSelectHeader span');
+    if (triggerHeader) triggerHeader.textContent = ` ${valorSeleccionado}`;
+  }
+}
+
+// ==========================================
+// NOTAS Y ENTRADA MANUAL / OFFLINE
 // ==========================================
 async function procesarONoGuardarNota() {
   const inputTexto = document.getElementById('txtNotaOffline');
   const btnGuardarNota = document.getElementById('btnGuardarNota');
   const texto = inputTexto ? inputTexto.value.trim() : '';
-  
-  const select = document.getElementById('sheetSelect');
-  const hoja = select ? select.value : '';
+  const hoja = getApiarioSeleccionado();
 
   if (!hoja) return alert("Selecciona primero un apiario.");
   if (!texto) return alert("Escribe o dicta una nota antes de guardar.");
@@ -380,7 +399,6 @@ async function procesarONoGuardarNota() {
     return;
   }
 
-  // Bloquear botón de guardar nota
   setCargando(btnGuardarNota, true, "⏳ Enviando...");
 
   try {
@@ -408,6 +426,7 @@ async function procesarONoGuardarNota() {
     setCargando(btnGuardarNota, false);
   }
 }
+
 function guardarEnLocalStorage(texto, hoja) {
   const pendientes = JSON.parse(localStorage.getItem('notas_apiario_pendientes') || '[]');
   pendientes.push({
@@ -450,7 +469,7 @@ async function sincronizarNotasPendientes() {
         body: JSON.stringify({ 
           action: "addFromVoice", 
           texto: nota.texto,
-          hoja: nota.hoja || document.getElementById('sheetSelect')?.value || ''
+          hoja: nota.hoja || getApiarioSeleccionado()
         })
       });
 
@@ -482,7 +501,7 @@ async function sincronizarNotasPendientes() {
   }
 
   alert(`🔄 Sincronización completada: ${exitosos} notas enviadas con éxito.`);
-  if (typeof cargarDatos === "function" && document.getElementById('sheetSelect').value) {
+  if (typeof cargarDatos === "function" && getApiarioSeleccionado()) {
     cargarDatos();
   }
 }
@@ -560,7 +579,7 @@ function activarGuardadoEnTiempoReal() {
 }
 
 async function guardarRegistroSilencioso() {
-  const hoja = document.getElementById('sheetSelect').value;
+  const hoja = getApiarioSeleccionado();
   if (!hoja) return;
 
   const payload = {
@@ -596,7 +615,7 @@ async function guardarRegistroSilencioso() {
 }
 
 async function cargarDatosSilencioso() {
-  const sheetName = document.getElementById('sheetSelect').value;
+  const sheetName = getApiarioSeleccionado();
   if (!sheetName) return;
 
   try {
@@ -612,7 +631,7 @@ async function cargarDatosSilencioso() {
   } catch (err) {
     console.error("Error cargando lista en segundo plano:", err);
   }
-}
+}   
 
 function mostrarEstadoGuardado(mensaje) {
   let statusEl = document.getElementById('autoSaveStatus');
@@ -664,63 +683,11 @@ async function cargarListaHojas() {
       const criterioActual = sortSelect ? sortSelect.value : 'custom';
 
       aplicarOrdenYRenderizar(criterioActual);
+      cargarDatos();
     }
   } catch (error) {
     console.error("Detalle del error al obtener hojas:", error);
   }
-}
-
-function aplicarOrdenYRenderizar(criterio) {
-  const select = document.getElementById('sheetSelect');
-  if (!select || !listaHojasOriginal || listaHojasOriginal.length === 0) return;
-
-  const valorSeleccionado = select.value;
-  let hojasOrdenadas = [...listaHojasOriginal];
-
-  if (criterio === 'alpha-asc') {
-    hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
-  } else if (criterio === 'alpha-desc') {
-    hojasOrdenadas.sort((a, b) => b.localeCompare(a, 'es', { numeric: true, sensitivity: 'base' }));
-  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
-    hojasOrdenadas.sort((a, b) => {
-      let idxA = ordenPersonalizado.indexOf(a);
-      let idxB = ordenPersonalizado.indexOf(b);
-      if (idxA === -1) idxA = 999;
-      if (idxB === -1) idxB = 999;
-      return idxA - idxB;
-    });
-  }
-
-  // Renderizar opciones con colores intercalados
-  select.innerHTML = '<option value="" style="background-color: #ffffff; color: #64748b;">-- Seleccionar Apiario --</option>';
-
-  hojasOrdenadas.forEach((hoja, index) => {
-    const option = document.createElement('option');
-    option.value = hoja;
-    option.textContent = `🐝 ${hoja}`;
-
-    // 🎨 Intercalar colores de fondo entre apiarios
-    if (index % 2 === 0) {
-      option.style.backgroundColor = '#fef3c7'; // Amarillo miel claro
-      option.style.color = '#78350f';
-    } else {
-      option.style.backgroundColor = '#e0f2fe'; // Azul pastel claro
-      option.style.color = '#0369a1';
-    }
-
-    option.style.padding = '10px';
-    option.style.fontWeight = 'bold';
-
-    select.appendChild(option);
-  });
-
-  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
-    select.value = valorSeleccionado;
-  }
-}
-
-function cambiarOrdenApiarios(criterio) {
-  aplicarOrdenYRenderizar(criterio);
 }
 
 // ==========================================
@@ -788,13 +755,17 @@ async function guardarOrdenManual() {
   localStorage.setItem('orden_apiarios_custom', JSON.stringify(nuevoOrden));
 
   try {
-    await enviarPeticionGenerica({ action: "saveSheetsOrder", order: nuevoOrden });
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "saveSheetsOrder", order: nuevoOrden })
+    });
   } catch (e) {
     console.log("Orden guardado localmente en el dispositivo.");
   }
 }
 
-// Deshabilita o habilita elementos dinámicamente para evitar múltiples clics
 function setCargando(elemento, cargando, textoCargando = "⏳ Procesando...") {
   if (!elemento) return;
   
