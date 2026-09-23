@@ -22,8 +22,7 @@
     <div class="header-content">
       <span class="logo-icon">🐝</span>
       <div>
-        <h1>Gestión Apícola</h1>
-        <p class="subtitle">Cuaderno de Campo</p>
+        <h1>Cuaderno de Campo</h1>
       </div>
     </div>
     
@@ -70,19 +69,29 @@
         </button>
       </div>
 
+      <!-- Control Oculto de Criterio de Ordenamiento para compatibilidad JS -->
+      <select id="sortSelect" style="display: none;">
+        <option value="custom" selected>Personalizado</option>
+        <option value="alpha-asc">A-Z</option>
+        <option value="alpha-desc">Z-A</option>
+      </select>
+
       <!-- Selector desplegable personalizado para móvil (Ancho Completo y Colores) -->
       <div class="custom-select-wrapper">
-        <div id="customSelectHeader" class="custom-select-trigger" onclick="toggleCustomDropdown()">
-          <span>-- Seleccionar Apiario --</span>
-          <span class="arrow">▼</span>
+        <div id="customSelectTrigger" class="custom-select-trigger">
+          <!-- Estado de Carga por defecto -->
+          <span id="selectText" class="select-text-loading">
+            <span class="spinner"></span> Cargando apiarios...
+          </span>
+          <span class="arrow-icon">▼</span>
         </div>
         
         <div id="customSelectOptions" class="custom-select-options" style="display: none;">
-          <!-- Se puebla dinámicamente con colores alternados desde script.js -->
+          <!-- Las opciones de los apiarios se inyectan dinámicamente -->
         </div>
       </div>
 
-      <!-- Select nativo oculto para mantener compatibilidad con las funciones internas -->
+      <!-- Select nativo oculto para mantener compatibilidad con script.js -->
       <select id="sheetSelect" onchange="cargarDatos()" style="display: none;">
         <option value="">Cargando apiarios...</option>
       </select>
@@ -91,12 +100,17 @@
     <!-- Barra del Apiario Activo y Botón Nueva Tarea -->
     <div id="infoSection" class="info-section" style="display:none;">
       <div class="apiario-header">
-        <div id="apiarioNombre" class="info-bar"></div>
+        <div id="apiarioNombre" class="info-bar" style="margin-bottom: 0.75rem;"></div>
         <button class="btn btn-primary btn-new-task" onclick="mostrarFormulario()">
           ➕ Agregar Nueva Tarea
         </button>
       </div>
-    </div>
+
+      <!-- Campo de búsqueda / filtro de registros en tiempo real 
+      <div style="margin-top: 0.75rem;">
+        <input type="text" id="searchInput" onkeyup="filtrarRegistros()" placeholder="🔍 Buscar por tarea, fecha o nota..." style="width: 100%; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 0.9rem;">
+      </div>
+    </div> -->
 
     <!-- Formulario Agregar / Editar Registro -->
     <div class="form-container card" id="formRegistro" style="display:none;">
