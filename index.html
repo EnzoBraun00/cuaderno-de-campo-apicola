@@ -44,8 +44,8 @@
       <textarea id="txtNotaOffline" rows="3" placeholder="Ej: 35 colmenas 10 núcleos cosechó 60 medias alzas..." style="width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-family: inherit;"></textarea>
 
       <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
-        <button id="btnGuardarNota" class="btn" style="background-color: #2563eb; color: white; flex: 1;">
-          💾 Guardar
+        <button type="button" id="btnGuardarNota" class="btn btn-primary" onclick="procesarONoGuardarNota()">
+          💾 Guardar Nota
         </button>
         <button id="btnSincronizar" class="btn" style="background-color: #16a34a; color: white; flex: 1;">
           🔄 Sincronizar (<span id="cantPendientes">0</span>)
@@ -179,5 +179,6 @@
 </div>
 
 <script src="script.js"></script>
+<script src="tester.js"></script>
 </body>
 </html>

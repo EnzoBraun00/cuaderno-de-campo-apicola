@@ -5,6 +5,7 @@ let editMode = false;
 let registroEditandoFecha = null;
 let listaHojasOriginal = [];
 let ordenPersonalizado = [];
+let enviandoRegistro = false; // Flag para prevenir peticiones simultáneas
 
 // ==========================================
 // INICIALIZACIÓN
@@ -32,10 +33,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Eventos para guardar y sincronizar notas
   const btnGuardar = document.getElementById('btnGuardarNota');
-  if (btnGuardar) btnGuardar.addEventListener('click', procesarONoGuardarNota);
+  if (btnGuardar) btnGuardar.addEventListener('click', (e) => {
+    e.preventDefault();
+    procesarONoGuardarNota();
+  });
 
   const btnSincro = document.getElementById('btnSincronizar');
-  if (btnSincro) btnSincro.addEventListener('click', sincronizarNotasPendientes);
+  if (btnSincro) btnSincro.addEventListener('click', (e) => {
+    e.preventDefault();
+    sincronizarNotasPendientes();
+  });
 
   // Inicialización de selector de ordenamiento de apiarios
   const sortSelect = document.getElementById('sortSelect');
@@ -52,12 +59,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (trigger && customOptions) {
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      customOptions.classList.toggle('active');
+      const estaActivo = customOptions.style.display === 'block' || customOptions.classList.contains('active');
+      if (estaActivo) {
+        customOptions.style.display = 'none';
+        customOptions.classList.remove('active');
+      } else {
+        customOptions.style.display = 'block';
+        customOptions.classList.add('active');
+      }
     });
 
-    // Cerrar el selector al hacer clic fuera de él
     document.addEventListener('click', (e) => {
       if (!trigger.contains(e.target) && !customOptions.contains(e.target)) {
+        customOptions.style.display = 'none';
         customOptions.classList.remove('active');
       }
     });
@@ -73,52 +87,40 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==========================================
-// FILTRADO DE APIARIOS Y ESTADO MÁS RECIENTE
+// FUNCIÓN PRINCIPAL DE GUARDADO (INVENTADA / CORREGIDA)
 // ==========================================
-function obtenerApiariosValidos(hojasDisponibles) {
-  if (!Array.isArray(hojasDisponibles)) return [];
-  
-  return hojasDisponibles.filter(nombreHoja => {
-    return /^H\d+$/i.test(String(nombreHoja).trim());
-  }).sort((a, b) => {
-    const numA = parseInt(String(a).replace(/\D/g, ''), 10);
-    const numB = parseInt(String(b).replace(/\D/g, ''), 10);
-    return numA - numB;
-  });
-}
+async function guardarRegistro(event) {
+  if (event) event.preventDefault();
 
-function obtenerUltimoEstadoApiario(registros) {
-  if (!registros || registros.length === 0) {
-    return { colmenas: 0, nucleos: 0, fecha: null };
-  }
+  if (enviandoRegistro) return;
 
-  const registrosNormalizados = registros.map(item => {
-    const rawFecha = item.fecha || item.Fecha || (Array.isArray(item) ? item[1] : '') || '';
-    const colmenas = item.colmenas !== undefined ? item.colmenas : (item.Colmenas !== undefined ? item.Colmenas : (Array.isArray(item) ? item[2] : 0));
-    const nucleos = item.nucleos !== undefined ? item.nucleos : (item.Núcleos !== undefined ? item.Núcleos : (Array.isArray(item) ? item[3] : 0));
+  const hoja = getApiarioSeleccionado();
+  const fecha = document.getElementById('inputFecha').value;
+  const colmenas = document.getElementById('inputColmenas').value;
+  const nucleos = document.getElementById('inputNucleos').value;
+  const tarea = document.getElementById('inputTarea').value.trim();
+  const obs = document.getElementById('inputObs').value.trim();
 
-    let timestamp = 0;
-    if (rawFecha) {
-      const fechaParseable = String(rawFecha).includes('T') ? rawFecha : String(rawFecha).replace(/-/g, '/');
-      timestamp = new Date(fechaParseable).getTime() || 0;
-    }
+  if (!hoja) return alert("Por favor, selecciona un apiario primero.");
+  if (!fecha) return alert("Por favor, selecciona una fecha.");
+  if (!tarea) return alert("Por favor, ingresa el detalle de la tarea.");
 
-    return {
-      fechaStr: rawFecha,
-      timestamp: timestamp,
-      colmenas: parseInt(colmenas || 0, 10),
-      nucleos: parseInt(nucleos || 0, 10)
-    };
-  });
-
-  registrosNormalizados.sort((a, b) => b.timestamp - a.timestamp);
-  const ultimoRegistro = registrosNormalizados[0];
-
-  return {
-    colmenas: isNaN(ultimoRegistro.colmenas) ? 0 : ultimoRegistro.colmenas,
-    nucleos: isNaN(ultimoRegistro.nucleos) ? 0 : ultimoRegistro.nucleos,
-    fecha: ultimoRegistro.fechaStr
+  const payload = {
+    hoja: hoja,
+    action: editMode ? "edit" : "add",
+    Fecha: fecha,
+    Colmenas: colmenas,
+    Núcleos: nucleos,
+    Tarea: tarea,
+    Observaciones: obs
   };
+
+  const btnGuardar = document.querySelector('#formRegistro .btn-primary');
+  setCargando(btnGuardar, true, "⏳ Guardando...");
+
+  await enviarPeticion(payload);
+
+  setCargando(btnGuardar, false);
 }
 
 // ==========================================
@@ -168,7 +170,7 @@ async function cargarDatos(nombreHojaOpcional) {
     renderLista(registrosGlobales);
   } catch (err) {
     console.error("❌ Detalle del error al cargar:", err);
-    alert("Error al cargar los datos del apiario. Reintenta la selección.");
+    alert("Error al cargar los datos del apiario.");
     if (lista) lista.innerHTML = "";
   }
 }
@@ -216,31 +218,38 @@ function renderLista(registros) {
   });
 }
 
-function filtrarRegistros() {
-  const queryInput = document.getElementById('searchInput');
-  if (!queryInput) return;
-  const query = queryInput.value.toLowerCase().trim();
-  
-  if (!query) {
-    renderLista(registrosGlobales);
-    return;
+function obtenerUltimoEstadoApiario(registros) {
+  if (!registros || registros.length === 0) {
+    return { colmenas: 0, nucleos: 0, fecha: null };
   }
 
-  const filtrados = registrosGlobales.filter(item => {
-    const fecha = String(item.Fecha || item.fecha || '').toLowerCase();
-    const tarea = String(item.Tarea || item.tarea || '').toLowerCase();
-    const obs = String(item.Observaciones || item.obs || '').toLowerCase();
-    const colmenas = String(item.Colmenas || item.colmenas || '');
-    const nucleos = String(item.Núcleos || item.nucleos || '');
+  const registrosNormalizados = registros.map(item => {
+    const rawFecha = item.fecha || item.Fecha || (Array.isArray(item) ? item[1] : '') || '';
+    const colmenas = item.colmenas !== undefined ? item.colmenas : (item.Colmenas !== undefined ? item.Colmenas : (Array.isArray(item) ? item[2] : 0));
+    const nucleos = item.nucleos !== undefined ? item.nucleos : (item.Núcleos !== undefined ? item.Núcleos : (Array.isArray(item) ? item[3] : 0));
 
-    return fecha.includes(query) || 
-           tarea.includes(query) || 
-           obs.includes(query) ||
-           colmenas.includes(query) ||
-           nucleos.includes(query);
+    let timestamp = 0;
+    if (rawFecha) {
+      const fechaParseable = String(rawFecha).includes('T') ? rawFecha : String(rawFecha).replace(/-/g, '/');
+      timestamp = new Date(fechaParseable).getTime() || 0;
+    }
+
+    return {
+      fechaStr: rawFecha,
+      timestamp: timestamp,
+      colmenas: parseInt(colmenas || 0, 10),
+      nucleos: parseInt(nucleos || 0, 10)
+    };
   });
 
-  renderLista(filtrados);
+  registrosNormalizados.sort((a, b) => b.timestamp - a.timestamp);
+  const ultimoRegistro = registrosNormalizados[0];
+
+  return {
+    colmenas: isNaN(ultimoRegistro.colmenas) ? 0 : ultimoRegistro.colmenas,
+    nucleos: isNaN(ultimoRegistro.nucleos) ? 0 : ultimoRegistro.nucleos,
+    fecha: ultimoRegistro.fechaStr
+  };
 }
 
 // ==========================================
@@ -288,6 +297,7 @@ function prepararEdicion(item) {
 }
 
 async function eliminarRegistro(fecha) {
+  if (enviandoRegistro) return;
   if (!confirm(`¿Seguro que deseas eliminar el registro de la fecha ${fecha}?`)) return;
 
   const hoja = getApiarioSeleccionado();
@@ -301,6 +311,9 @@ async function eliminarRegistro(fecha) {
 }
 
 async function enviarPeticion(payload) {
+  if (enviandoRegistro) return;
+  enviandoRegistro = true;
+
   try {
     const response = await fetch(SCRIPT_URL, {
       method: "POST",
@@ -321,6 +334,8 @@ async function enviarPeticion(payload) {
   } catch (err) {
     console.error("Error en enviarPeticion:", err);
     alert("Error de conexión o al procesar la respuesta.");
+  } finally {
+    enviandoRegistro = false;
   }
 }
 
@@ -361,6 +376,7 @@ function seleccionarApiarioCustom(nombreApiario) {
 
   const options = document.getElementById('customSelectOptions');
   if (options) {
+    options.style.display = 'none';
     options.classList.remove('active');
   }
 
@@ -368,16 +384,21 @@ function seleccionarApiarioCustom(nombreApiario) {
 }
 
 // ==========================================
-// RENDERIZADO Y AUTO-SELECCIÓN INICIAL
+// RENDERIZADO DE SELECTOR DE APIARIOS
 // ==========================================
 function aplicarOrdenYRenderizar(criterio) {
   const selectOculto = document.getElementById('sheetSelect');
   const customOptions = document.getElementById('customSelectOptions');
   if (!selectOculto || !customOptions || !listaHojasOriginal || listaHojasOriginal.length === 0) return;
 
-  let valorSeleccionado = selectOculto.value;
+  // 1. Guardar la selección actual antes de limpiar el DOM
+  let valorSeleccionado = (typeof getApiarioSeleccionado === 'function') 
+    ? getApiarioSeleccionado() 
+    : selectOculto.value;
+
   let hojasOrdenadas = [...listaHojasOriginal];
 
+  // 2. Ordenar las hojas según el criterio
   if (criterio === 'alpha-asc') {
     hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
   } else if (criterio === 'alpha-desc') {
@@ -392,22 +413,37 @@ function aplicarOrdenYRenderizar(criterio) {
     });
   }
 
+  // 3. Limpiar elementos previos
   selectOculto.innerHTML = '';
   customOptions.innerHTML = '';
 
-  // Encabezado con opción de cierre para dispositivos móviles
+  // 4. Crear cabecera móvil con botón de cierre seguro
   const mobileHeader = document.createElement('div');
   mobileHeader.className = 'mobile-select-header';
+  mobileHeader.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: #d97706; color: white; border-radius: 4px 4px 0 0;";
   mobileHeader.innerHTML = `
-    <span> </span>
-    <button type="button" style="background:none; border:none; color:white; font-size:1.2rem; cursor:pointer;" onclick="document.getElementById('customSelectOptions').classList.remove('active')">✕</button>
+    <span>Seleccionar Apiario</span>
+    <button type="button" id="btnCerrarSelectorCustom" style="background:none; border:none; color:white; font-size:1.2rem; cursor:pointer; padding: 0 0.5rem;">✕</button>
   `;
   customOptions.appendChild(mobileHeader);
 
+  // Evento directo de cierre sin recargar nada
+  const btnCerrar = mobileHeader.querySelector('#btnCerrarSelectorCustom');
+  if (btnCerrar) {
+    btnCerrar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      customOptions.style.display = 'none';
+      customOptions.classList.remove('active');
+    });
+  }
+
+  // 5. Establecer valor por defecto si no había ninguno
   if (!valorSeleccionado && hojasOrdenadas.length > 0) {
     valorSeleccionado = hojasOrdenadas[0];
   }
 
+  // 6. Generar opciones en el select oculto y en el customOptions
   hojasOrdenadas.forEach((hoja, index) => {
     const optionObj = document.createElement('option');
     optionObj.value = hoja;
@@ -417,12 +453,14 @@ function aplicarOrdenYRenderizar(criterio) {
     const div = document.createElement('div');
     const claseColor = (index % 2 === 0) ? 'opcion-amarilla' : 'opcion-azul';
     div.className = `custom-option ${claseColor}`;
+    div.style.cssText = "padding: 0.75rem; cursor: pointer; border-bottom: 1px solid #f1f5f9;";
     div.textContent = hoja;
     div.onclick = () => seleccionarApiarioCustom(hoja);
 
     customOptions.appendChild(div);
   });
 
+  // 7. Restablecer la selección previa
   if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
     selectOculto.value = valorSeleccionado;
     const selectText = document.getElementById('selectText');
@@ -434,6 +472,8 @@ function aplicarOrdenYRenderizar(criterio) {
 // NOTAS Y ENTRADA MANUAL / OFFLINE
 // ==========================================
 async function procesarONoGuardarNota() {
+  if (enviandoRegistro) return;
+
   const inputTexto = document.getElementById('txtNotaOffline');
   const btnGuardarNota = document.getElementById('btnGuardarNota');
   const texto = inputTexto ? inputTexto.value.trim() : '';
@@ -449,6 +489,7 @@ async function procesarONoGuardarNota() {
     return;
   }
 
+  enviandoRegistro = true;
   setCargando(btnGuardarNota, true, "⏳ Enviando...");
 
   try {
@@ -473,6 +514,7 @@ async function procesarONoGuardarNota() {
     if (inputTexto) inputTexto.value = "";
     alert("⚠️ Fallo de conexión. Guardado en el dispositivo.");
   } finally {
+    enviandoRegistro = false;
     setCargando(btnGuardarNota, false);
   }
 }
@@ -489,6 +531,8 @@ function guardarEnLocalStorage(texto, hoja) {
 }
 
 async function sincronizarNotasPendientes() {
+  if (enviandoRegistro) return;
+
   const pendientes = JSON.parse(localStorage.getItem('notas_apiario_pendientes') || '[]');
   const btnSincro = document.getElementById('btnSincronizar');
 
@@ -502,6 +546,7 @@ async function sincronizarNotasPendientes() {
     return;
   }
 
+  enviandoRegistro = true;
   if (btnSincro) {
     btnSincro.disabled = true;
     btnSincro.innerText = "⏳ Sincronizando...";
@@ -523,14 +568,7 @@ async function sincronizarNotasPendientes() {
         })
       });
 
-      const textResponse = await response.text();
-      let res;
-      try {
-        res = JSON.parse(textResponse);
-      } catch (e) {
-        console.error("El servidor devolvió HTML en lugar de JSON:", textResponse);
-        throw new Error("Respuesta no válida del servidor.");
-      }
+      const res = await response.json();
       if (!res.error) {
         exitosos++;
       } else {
@@ -545,6 +583,7 @@ async function sincronizarNotasPendientes() {
   localStorage.setItem('notas_apiario_pendientes', JSON.stringify(restantes));
   actualizarContadorPendientes();
 
+  enviandoRegistro = false;
   if (btnSincro) {
     btnSincro.disabled = false;
     btnSincro.innerHTML = `🔄 Sincronizar (<span id="cantPendientes">${restantes.length}</span>)`;
@@ -565,40 +604,7 @@ function actualizarContadorPendientes() {
 }
 
 // ==========================================
-// REGISTRO DE SERVICE WORKER E INSTALACIÓN PWA
-// ==========================================
-if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(() => console.log('Service Worker registrado correctamente.'))
-      .catch((err) => console.error('Error al registrar Service Worker:', err));
-  });
-}
-
-let deferredPrompt;
-const btnInstall = document.getElementById('btnInstall');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  if (btnInstall) btnInstall.style.display = 'block';
-});
-
-if (btnInstall) {
-  btnInstall.addEventListener('click', async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        btnInstall.style.display = 'none';
-      }
-      deferredPrompt = null;
-    }
-  });
-}
-
-// ==========================================
-// AUTO-GUARDADO EN TIEMPO REAL (DEBOUNCE)
+// AUTO-GUARDADO EN TIEMPO REAL (SOLO EDICIÓN)
 // ==========================================
 let timerAutoGuardado = null;
 
@@ -609,16 +615,19 @@ function activarGuardadoEnTiempoReal() {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('input', () => {
+        // Solamente guarda de fondo si el usuario está en MODO EDICIÓN
+        if (!editMode) return;
+
         const fecha = document.getElementById('inputFecha').value;
         const tarea = document.getElementById('inputTarea').value.trim();
 
-        if (!fecha) return;
+        if (!fecha || enviandoRegistro) return;
 
         mostrarEstadoGuardado("✍️ Escribiendo...");
         clearTimeout(timerAutoGuardado);
 
         timerAutoGuardado = setTimeout(async () => {
-          if (tarea || editMode) {
+          if (tarea) {
             mostrarEstadoGuardado("⏳ Guardando cambios...");
             await guardarRegistroSilencioso();
           }
@@ -629,12 +638,15 @@ function activarGuardadoEnTiempoReal() {
 }
 
 async function guardarRegistroSilencioso() {
+  if (enviandoRegistro) return;
   const hoja = getApiarioSeleccionado();
   if (!hoja) return;
 
+  enviandoRegistro = true;
+
   const payload = {
     hoja: hoja,
-    action: editMode ? "edit" : "add",
+    action: "edit",
     Fecha: document.getElementById('inputFecha').value,
     Colmenas: document.getElementById('inputColmenas').value,
     Núcleos: document.getElementById('inputNucleos').value,
@@ -654,41 +666,16 @@ async function guardarRegistroSilencioso() {
 
     if (!result.error) {
       mostrarEstadoGuardado("✅ Guardado automáticamente");
-      cargarDatosSilencioso();
     } else {
       mostrarEstadoGuardado("⚠️ Error al auto-guardar");
     }
   } catch (err) {
     console.error("Error en auto-guardado:", err);
-    mostrarEstadoGuardado("📶 Sin conexión (no guardado)");
+    mostrarEstadoGuardado("📶 Sin conexión");
+  } finally {
+    enviandoRegistro = false;
   }
 }
-
-async function cargarDatosSilencioso() {
-  const sheetName = getApiarioSeleccionado();
-  if (!sheetName) return;
-
-  try {
-    const url = `${SCRIPT_URL}?hoja=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
-    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-    if (!response.ok) return;
-
-    const data = await response.json();
-    if (!data.error) {
-      registrosGlobales = Array.isArray(data) ? data : (data.registros || data.datos || []);
-
-      const ultimoEstado = obtenerUltimoEstadoApiario(registrosGlobales);
-      const inputColmenas = document.getElementById('inputColmenas');
-      const inputNucleos = document.getElementById('inputNucleos');
-      if (inputColmenas && !editMode) inputColmenas.value = ultimoEstado.colmenas;
-      if (inputNucleos && !editMode) inputNucleos.value = ultimoEstado.nucleos;
-
-      renderLista(registrosGlobales);
-    }
-  } catch (err) {
-    console.error("Error cargando lista en segundo plano:", err);
-  }
-}   
 
 function mostrarEstadoGuardado(mensaje) {
   let statusEl = document.getElementById('autoSaveStatus');
@@ -718,7 +705,7 @@ async function cargarListaHojas() {
     const text = await response.text();
     
     if (text.trim().startsWith("<")) {
-      throw new Error("Respuesta no válida del servidor (devolvió HTML).");
+      throw new Error("Respuesta no válida del servidor.");
     }
 
     const data = JSON.parse(text);
@@ -845,6 +832,9 @@ async function guardarOrdenManual() {
   }
 }
 
+// ==========================================
+// UTILIDADES
+// ==========================================
 function setCargando(elemento, cargando, textoCargando = "⏳ Procesando...") {
   if (!elemento) return;
   
@@ -863,5 +853,13 @@ function setCargando(elemento, cargando, textoCargando = "⏳ Procesando...") {
     if (elemento.dataset.originalText) {
       elemento.innerHTML = elemento.dataset.originalText;
     }
+  }
+}
+
+function cerrarSelectorCustom() {
+  const customOptions = document.getElementById('customSelectOptions');
+  if (customOptions) {
+    customOptions.style.display = 'none';
+    customOptions.classList.remove('active');
   }
 }
