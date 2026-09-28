@@ -22,6 +22,15 @@
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
 }
 
+html {
+  /* Evita el zoom por doble toque y desplazamientos accidentales */
+  touch-action: manipulation;
+  /* Bloquea el desbordamiento horizontal si algo intenta correrse */
+  overflow-x: hidden;
+  width: 100%;
+  position: relative;
+}
+
 body { 
   background-color: var(--bg); 
   color: var(--text-main); 
@@ -29,6 +38,11 @@ body {
   justify-content: center; 
   min-height: 100vh; 
   -webkit-tap-highlight-color: transparent;
+
+  touch-action: manipulation;
+  overflow-x: hidden;
+  width: 100%;
+  position: relative;
 }
 
 .app-container { 
