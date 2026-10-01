@@ -5,126 +5,374 @@ let editMode = false;
 let registroEditandoFecha = null;
 let listaHojasOriginal = [];
 let ordenPersonalizado = [];
-let enviandoRegistro = false; // Flag para prevenir peticiones simultáneas
+let enviandoRegistro = false; 
+let apiarioSeleccionadoGlobal = "";
+let categoriaFiltroActual = "todos";
+
+// Cache local para almacenar las métricas de todos los apiarios
+let cacheMetricasApiarios = {};
 
 // ==========================================
-// INICIALIZACIÓN
+// INICIALIZACIÓN Y CARGA EN 2 FASES
 // ==========================================
 window.onload = async function() {
   await cargarListaHojas();
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Manejo de la entrada manual / offline
-  const btnToggle = document.getElementById('btnToggleOffline');
-  const seccionOffline = document.getElementById('seccionOffline');
-
-  if (btnToggle && seccionOffline) {
-    btnToggle.addEventListener('click', () => {
-      if (seccionOffline.style.display === 'none' || seccionOffline.style.display === '') {
-        seccionOffline.style.display = 'block';
-        btnToggle.innerHTML = "❌ <span>Ocultar Entrada Manual</span>";
-      } else {
-        seccionOffline.style.display = 'none';
-        btnToggle.innerHTML = "📝 <span>Abrir Entrada Manual / Offline</span>";
-      }
-    });
-  }
-
-  // Eventos para guardar y sincronizar notas
-  const btnGuardar = document.getElementById('btnGuardarNota');
-  if (btnGuardar) btnGuardar.addEventListener('click', (e) => {
-    e.preventDefault();
-    procesarONoGuardarNota();
-  });
-
-  const btnSincro = document.getElementById('btnSincronizar');
-  if (btnSincro) btnSincro.addEventListener('click', (e) => {
-    e.preventDefault();
-    sincronizarNotasPendientes();
-  });
-
-  // Inicialización de selector de ordenamiento de apiarios
-  const sortSelect = document.getElementById('sortSelect');
-  if (sortSelect) {
-    sortSelect.addEventListener('change', (e) => {
-      aplicarOrdenYRenderizar(e.target.value);
-    });
-  }
-
-  // Control para abrir / cerrar el menú selector personalizado
-  const trigger = document.getElementById('customSelectTrigger');
-  const customOptions = document.getElementById('customSelectOptions');
+async function cargarListaHojas() {
+  const container = document.getElementById('beeApiariosContainer');
   
-  if (trigger && customOptions) {
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const estaActivo = customOptions.style.display === 'block' || customOptions.classList.contains('active');
-      if (estaActivo) {
-        customOptions.style.display = 'none';
-        customOptions.classList.remove('active');
-      } else {
-        customOptions.style.display = 'block';
-        customOptions.classList.add('active');
-      }
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!trigger.contains(e.target) && !customOptions.contains(e.target)) {
-        customOptions.style.display = 'none';
-        customOptions.classList.remove('active');
-      }
-    });
+  if (container) {
+    container.innerHTML = `
+      <div class="bee-loading-state" style="text-align:center; padding:1.5rem; color:#64748b;">
+        <span class="spinner"></span> Cargando nombres de apiarios...
+      </div>`;
   }
 
-  actualizarContadorPendientes();
-  activarGuardadoEnTiempoReal();
+  try {
+    // FASE 1: Obtener la lista de nombres de apiarios
+    const response = await fetch(`${SCRIPT_URL}?action=getSheets`);
+    const text = await response.text();
+    
+    if (text.trim().startsWith("<")) throw new Error("Respuesta no válida del servidor.");
 
-  window.addEventListener('online', () => {
-    console.log("📶 Conexión restablecida. Sincronizando notas pendientes...");
-    sincronizarNotasPendientes();
+    const data = JSON.parse(text);
+    if (data.error) throw new Error(data.error);
+
+    if (Array.isArray(data.sheets) && data.sheets.length > 0) {
+      listaHojasOriginal = data.sheets;
+
+      const ordenServidor = Array.isArray(data.customOrder) ? data.customOrder : [];
+      const ordenLocal = JSON.parse(localStorage.getItem('orden_apiarios_custom') || '[]');
+      const ordenGuardado = ordenServidor.length > 0 ? ordenServidor : ordenLocal;
+      
+      if (ordenGuardado.length > 0) {
+        const hojasSet = new Set(listaHojasOriginal);
+        const apiariosValidos = ordenGuardado.filter(hoja => hojasSet.has(hoja));
+        const apiariosNuevos = listaHojasOriginal.filter(hoja => !ordenGuardado.includes(hoja));
+        ordenPersonalizado = [...apiariosValidos, ...apiariosNuevos];
+      } else {
+        ordenPersonalizado = [...listaHojasOriginal];
+      }
+
+      // Definir apiario seleccionado
+      const primerApiario = ordenPersonalizado[0] || data.sheets[0];
+      apiarioSeleccionadoGlobal = primerApiario;
+
+      // Renderizar INMEDIATAMENTE los apiarios con valores por defecto/cargando
+      const sortSelect = document.getElementById('sortSelect');
+      const criterioActual = sortSelect ? sortSelect.value : 'custom';
+      aplicarOrdenYRenderizar(criterioActual);
+
+      // Cargar tareas del apiario inicial
+      cargarDatos(primerApiario);
+
+      // FASE 2: Buscar métricas en segundo plano mostrando aviso
+      await precargarTodasLasMetricasSegundoplano(ordenPersonalizado);
+
+    } else {
+      if (container) {
+        container.innerHTML = '<div style="text-align:center; color:#64748b; padding:1rem;">Sin apiarios disponibles</div>';
+      }
+    }
+  } catch (error) {
+    console.error("Error al obtener apiarios:", error);
+    if (container) {
+      container.innerHTML = '<div style="text-align:center; color:#ef4444; padding:1rem;">⚠️ Error al cargar apiarios</div>';
+    }
+  }
+}
+
+// Búsqueda de métricas por lotes (evita sobrecargar el servidor)
+async function precargarTodasLasMetricasSegundoplano() {
+  mostrarAvisoCargaMetricas(true, "Calculando métricas...");
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=getAllMetrics`);
+    const data = await res.json();
+    cacheMetricasApiarios = data;
+    Object.keys(data).forEach(hoja => actualizarTarjetaApiarioUI(hoja));
+  } catch (e) {
+    console.error("Error cargando métricas unificadas", e);
+  } finally {
+    mostrarAvisoCargaMetricas(false);
+  }
+}
+
+function mostrarAvisoCargaMetricas(mostrar, mensaje = "") {
+  let banner = document.getElementById('beeMetricsBanner');
+  const container = document.getElementById('beeApiariosContainer');
+
+  if (!banner && container && container.parentNode) {
+    banner = document.createElement('div');
+    banner.id = 'beeMetricsBanner';
+    banner.className = 'bee-loading-banner';
+    container.parentNode.insertBefore(banner, container);
+  }
+
+  if (banner) {
+    if (mostrar) {
+      banner.style.display = 'flex';
+      banner.innerHTML = `<span class="spinner-sm"></span> <span>${mensaje}</span>`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+}
+
+function actualizarTarjetaApiarioUI(hoja) {
+  const metricas = cacheMetricasApiarios[hoja];
+  if (!metricas) return;
+
+  const cards = document.querySelectorAll('.bee-card');
+  cards.forEach(card => {
+    if (card.dataset.nombreHoja === hoja) {
+      const estadoInfo = calcularEstadoApiario(metricas.ultimaFecha);
+      card.dataset.estado = estadoInfo.clase;
+
+      // Actualizar valores numéricos en el DOM directamente
+      const valColmenas = card.querySelector('.metric-colmenas');
+      const valNucleos = card.querySelector('.metric-nucleos');
+      const valFecha = card.querySelector('.metric-fecha');
+      const badgeEstado = card.querySelector('.bee-status-badge.estado-visita');
+
+      if (valColmenas) valColmenas.innerText = metricas.colmenas;
+      if (valNucleos) valNucleos.innerText = metricas.nucleos;
+      if (valFecha) valFecha.innerText = metricas.ultimaFecha;
+      if (badgeEstado) {
+        badgeEstado.className = `bee-status-badge estado-visita ${estadoInfo.clase}`;
+        badgeEstado.innerText = estadoInfo.texto;
+      }
+    }
   });
-});
-
-// ==========================================
-// FUNCIÓN PRINCIPAL DE GUARDADO (INVENTADA / CORREGIDA)
-// ==========================================
-async function guardarRegistro(event) {
-  if (event) event.preventDefault();
-
-  if (enviandoRegistro) return;
-
-  const hoja = getApiarioSeleccionado();
-  const fecha = document.getElementById('inputFecha').value;
-  const colmenas = document.getElementById('inputColmenas').value;
-  const nucleos = document.getElementById('inputNucleos').value;
-  const tarea = document.getElementById('inputTarea').value.trim();
-  const obs = document.getElementById('inputObs').value.trim();
-
-  if (!hoja) return alert("Por favor, selecciona un apiario primero.");
-  if (!fecha) return alert("Por favor, selecciona una fecha.");
-  if (!tarea) return alert("Por favor, ingresa el detalle de la tarea.");
-
-  const payload = {
-    hoja: hoja,
-    action: editMode ? "edit" : "add",
-    Fecha: fecha,
-    Colmenas: colmenas,
-    Núcleos: nucleos,
-    Tarea: tarea,
-    Observaciones: obs
-  };
-
-  const btnGuardar = document.querySelector('#formRegistro .btn-primary');
-  setCargando(btnGuardar, true, "⏳ Guardando...");
-
-  await enviarPeticion(payload);
-
-  setCargando(btnGuardar, false);
 }
 
 // ==========================================
-// CONSULTA Y RENDERIZADO DE REGISTROS
+// RENDERIZADO DE TARJETAS
+// ==========================================
+function calcularEstadoApiario(fechaStr) {
+  if (!fechaStr || fechaStr === 'Sin fecha' || fechaStr === 'Sin registros' || fechaStr === '...') {
+    return { texto: '⚠️ Sin registros', clase: 'alert' };
+  }
+
+  let fechaVisita;
+  if (fechaStr.includes('-')) {
+    fechaVisita = new Date(fechaStr + 'T00:00:00');
+  } else if (fechaStr.includes('/')) {
+    const partes = fechaStr.split('/');
+    fechaVisita = new Date(`${partes[2]}-${partes[1]}-${partes[0]}T00:00:00`);
+  } else {
+    fechaVisita = new Date(fechaStr);
+  }
+
+  if (isNaN(fechaVisita.getTime())) {
+    return { texto: 'Normal', clase: 'normal' };
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  fechaVisita.setHours(0, 0, 0, 0);
+
+  const diffTiempo = hoy.getTime() - fechaVisita.getTime();
+  const diffDias = Math.floor(diffTiempo / (1000 * 3600 * 24));
+
+  if (diffDias <= 3 && diffDias >= 0) {
+    return { texto: '🟢 Recién visto', clase: 'recent' };
+  } else if (diffDias > 21) {
+    return { texto: '🔴 Hace tiempo', clase: 'alert' };
+  } else if (diffDias > 7) {
+    return { texto: '🟡 Revisar pronto', clase: 'warning' };
+  } else {
+    return { texto: '🔵 Al día', clase: 'normal' };
+  }
+}
+
+function aplicarOrdenYRenderizar(criterio) {
+  const selectOculto = document.getElementById('sheetSelect');
+  const container = document.getElementById('beeApiariosContainer');
+  if (!selectOculto || !container || !listaHojasOriginal || listaHojasOriginal.length === 0) return;
+
+  let valorSeleccionado = apiarioSeleccionadoGlobal || selectOculto.value;
+  let hojasOrdenadas = [...listaHojasOriginal];
+
+  if (criterio === 'alpha-asc') {
+    hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
+  } else if (criterio === 'alpha-desc') {
+    hojasOrdenadas.sort((a, b) => b.localeCompare(a, 'es', { numeric: true, sensitivity: 'base' }));
+  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
+    hojasOrdenadas.sort((a, b) => {
+      let idxA = ordenPersonalizado.indexOf(a);
+      let idxB = ordenPersonalizado.indexOf(b);
+      if (idxA === -1) idxA = 999;
+      if (idxB === -1) idxB = 999;
+      return idxA - idxB;
+    });
+  }
+
+  selectOculto.innerHTML = '';
+  container.innerHTML = '';
+
+  if (!valorSeleccionado && hojasOrdenadas.length > 0) {
+    valorSeleccionado = hojasOrdenadas[0];
+    apiarioSeleccionadoGlobal = valorSeleccionado;
+  }
+
+  hojasOrdenadas.forEach((hoja) => {
+    const optionObj = document.createElement('option');
+    optionObj.value = hoja;
+    optionObj.textContent = hoja;
+    selectOculto.appendChild(optionObj);
+
+    const metricas = cacheMetricasApiarios[hoja] || { colmenas: '...', nucleos: '...', ultimaFecha: '...' };
+    const estadoInfo = calcularEstadoApiario(metricas.ultimaFecha);
+    const esActivo = (hoja === valorSeleccionado);
+
+    const card = document.createElement('div');
+    card.className = `bee-card ${esActivo ? 'active apiario-seleccionado-foco' : ''}`;
+    card.dataset.nombre = hoja.toLowerCase();
+    card.dataset.nombreHoja = hoja;
+    card.dataset.estado = estadoInfo.clase;
+
+    card.innerHTML = `
+      <div class="bee-card-header">
+        <div class="bee-avatar-badge">
+          <span class="bee-avatar">🐝</span>
+          <span class="bee-title">${hoja}</span>
+        </div>
+        <div style="display: flex; gap: 0.3rem; align-items: center;">
+          ${esActivo ? '<span class="bee-status-badge selected">✓ Seleccionado</span>' : ''}
+          <span class="bee-status-badge estado-visita ${estadoInfo.clase}">${estadoInfo.texto}</span>
+        </div>
+      </div>
+
+      <div class="bee-metrics-grid">
+        <div class="bee-metric-item">
+          <span class="bee-metric-val metric-colmenas">${metricas.colmenas}</span>
+          <span class="bee-metric-lbl">Colmenas</span>
+        </div>
+        <div class="bee-metric-item">
+          <span class="bee-metric-val metric-nucleos">${metricas.nucleos}</span>
+          <span class="bee-metric-lbl">Núcleos</span>
+        </div>
+        <div class="bee-metric-item">
+          <span class="bee-metric-val metric-fecha" style="font-size:0.8rem;">${metricas.ultimaFecha}</span>
+          <span class="bee-metric-lbl">Última Visita</span>
+        </div>
+      </div>
+    `;
+
+    // ✅ CÓDIGO CORREGIDO:
+    card.onclick = () => seleccionarApiario(hoja);
+    container.appendChild(card);
+  });
+
+  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
+    selectOculto.value = valorSeleccionado;
+  }
+
+  filtrarApiariosCards();
+}
+
+function filtrarApiariosCards() {
+  const searchInput = document.getElementById('beeSearchInput');
+  const texto = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const cards = document.querySelectorAll('.bee-card');
+
+  cards.forEach(card => {
+    const nombre = card.dataset.nombre || '';
+    const estado = card.dataset.estado || '';
+
+    const coincideNombre = nombre.includes(texto);
+    let coincideCategoria = true;
+
+    if (categoriaFiltroActual === 'alerta') {
+      coincideCategoria = estado.includes('alert') || estado.includes('warning');
+    } else if (categoriaFiltroActual === 'alta') {
+      coincideCategoria = estado.includes('recent') || estado.includes('normal');
+    }
+
+    if (coincideNombre && coincideCategoria) {
+      card.style.display = 'block';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+
+function filtrarCategoriaApiarios(categoria, btnElement) {
+  categoriaFiltroActual = categoria;
+  const chips = document.querySelectorAll('.bee-chip');
+  chips.forEach(c => c.classList.remove('active'));
+  if (btnElement) btnElement.classList.add('active');
+  filtrarApiariosCards();
+}
+
+function seleccionarApiario(nombreApiario) {
+  if (!nombreApiario) return;
+
+  // 1. Actualizar estado global y select oculto
+  apiarioSeleccionadoGlobal = nombreApiario;
+  
+  const sheetSelect = document.getElementById('sheetSelect');
+  if (sheetSelect) {
+    sheetSelect.value = nombreApiario;
+  }
+
+  // 2. Actualizar bloque/panel superior informativo
+  const infoSection = document.getElementById('infoSection');
+  const apiarioNombre = document.getElementById('apiarioNombre');
+
+  if (infoSection) {
+    infoSection.style.display = 'block';
+    infoSection.classList.add('apiario-vista-destacada');
+  }
+
+  if (apiarioNombre) {
+    apiarioNombre.innerHTML = `📌 Apiario: <strong>${nombreApiario}</strong>`;
+  }
+
+  // 3. Actualizar la clase active / selected en todas las tarjetas
+  const cards = document.querySelectorAll('.bee-card');
+  cards.forEach(card => {
+    const esIgual = (card.dataset.nombreHoja === nombreApiario);
+
+    // Ajuste de clases CSS según convenga
+    if (esIgual) {
+      card.classList.add('active', 'selected', 'apiario-seleccionado-foco');
+      
+      // Agregar/asegurar el badge "✓ Seleccionado" dentro del header
+      let badge = card.querySelector('.bee-status-badge.selected');
+      if (!badge) {
+        const headerFlex = card.querySelector('.bee-card-header > div:last-child');
+        if (headerFlex) {
+          const newBadge = document.createElement('span');
+          newBadge.className = 'bee-status-badge selected';
+          newBadge.innerText = '✓ Seleccionado';
+          headerFlex.insertBefore(newBadge, headerFlex.firstChild);
+        }
+      }
+    } else {
+      card.classList.remove('active', 'selected', 'apiario-seleccionado-foco');
+      const badge = card.querySelector('.bee-status-badge.selected');
+      if (badge) badge.remove();
+    }
+  });
+
+  // 4. Cargar las tareas y registros del apiario seleccionado
+  cargarDatos(nombreApiario);
+}
+
+function getApiarioSeleccionado() {
+  if (apiarioSeleccionadoGlobal) return apiarioSeleccionadoGlobal;
+  const select = document.getElementById('sheetSelect');
+  if (select && select.value) return select.value;
+  if (listaHojasOriginal && listaHojasOriginal.length > 0) {
+    return ordenPersonalizado.length > 0 ? ordenPersonalizado[0] : listaHojasOriginal[0];
+  }
+  return "";
+}
+
+// ==========================================
+// CONSULTA Y RENDERIZADO DE TAREAS
 // ==========================================
 async function cargarDatos(nombreHojaOpcional) {
   const sheetName = nombreHojaOpcional || getApiarioSeleccionado();
@@ -138,7 +386,7 @@ async function cargarDatos(nombreHojaOpcional) {
     return;
   }
 
-  if (lista) lista.innerHTML = "<p style='text-align:center; padding:1.5rem; color:#64748b;'>Cargando registros del apiario...</p>";
+  if (lista) lista.innerHTML = "<p style='text-align:center; padding:1.5rem; color:#64748b;'>Cargando tareas del apiario...</p>";
 
   try {
     const url = `${SCRIPT_URL}?hoja=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
@@ -147,7 +395,6 @@ async function cargarDatos(nombreHojaOpcional) {
     if (!response.ok) throw new Error("Error en la respuesta de la red");
 
     const data = await response.json();
-
     if (data.error) {
       alert("Error reportado por el backend: " + data.error);
       if (lista) lista.innerHTML = "";
@@ -158,7 +405,7 @@ async function cargarDatos(nombreHojaOpcional) {
 
     if (infoSection) infoSection.style.display = 'block';
     const titleEl = document.getElementById('apiarioNombre');
-    if (titleEl) titleEl.innerText = "📌: " + sheetName;
+    if (titleEl) titleEl.innerText = "📌 Apiario: " + sheetName;
     
     const ultimoEstado = obtenerUltimoEstadoApiario(registrosGlobales);
     const inputColmenas = document.getElementById('inputColmenas');
@@ -167,10 +414,17 @@ async function cargarDatos(nombreHojaOpcional) {
     if (inputColmenas) inputColmenas.value = ultimoEstado.colmenas;
     if (inputNucleos) inputNucleos.value = ultimoEstado.nucleos;
 
+    cacheMetricasApiarios[sheetName] = {
+      colmenas: ultimoEstado.colmenas,
+      nucleos: ultimoEstado.nucleos,
+      ultimaFecha: ultimoEstado.fecha || 'Sin registros'
+    };
+
+    actualizarTarjetaApiarioUI(sheetName);
     renderLista(registrosGlobales);
+
   } catch (err) {
-    console.error("❌ Detalle del error al cargar:", err);
-    alert("Error al cargar los datos del apiario.");
+    console.error("Error al cargar tareas:", err);
     if (lista) lista.innerHTML = "";
   }
 }
@@ -206,7 +460,7 @@ function renderLista(registros) {
       <div style="font-size:0.95rem; font-weight:600; margin-bottom:0.25rem;">📝 Tarea: ${tarea}</div>
       ${obs ? `<div style="font-size:0.85rem; color:#64748b; margin-top:0.25rem;">${obs}</div>` : ''}
       <div style="display:flex; gap:0.5rem; margin-top:0.85rem; border-top:1px solid #f1f5f9; padding-top:0.5rem;">
-        <button class="btn btn-secondary btn-edit-card" style="padding:0.35rem 0.75rem; font-size:0.8rem;">✏️ Editar</button>
+        <button class="btn btn-secondary btn-edit-card" style="padding:0.35rem 0.75rem; font-size:0.8rem;">✏ Editar</button>
         <button class="btn btn-danger btn-delete-card" style="padding:0.35rem 0.75rem; font-size:0.8rem;">🗑️ Eliminar</button>
       </div>
     `;
@@ -253,34 +507,106 @@ function obtenerUltimoEstadoApiario(registros) {
 }
 
 // ==========================================
-// ABM DE REGISTROS (FORMULARIO)
+// ABM Y EVENTOS DOM
 // ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+  const btnToggle = document.getElementById('btnToggleOffline');
+  const seccionOffline = document.getElementById('seccionOffline');
+
+  if (btnToggle && seccionOffline) {
+    btnToggle.addEventListener('click', () => {
+      if (seccionOffline.style.display === 'none' || seccionOffline.style.display === '') {
+        seccionOffline.style.display = 'block';
+        btnToggle.innerHTML = "❌ <span>Ocultar Entrada Manual</span>";
+      } else {
+        seccionOffline.style.display = 'none';
+        btnToggle.innerHTML = "📝 <span>Abrir Entrada Manual / Offline</span>";
+      }
+    });
+  }
+
+  const btnGuardar = document.getElementById('btnGuardarNota');
+  if (btnGuardar) btnGuardar.addEventListener('click', (e) => {
+    e.preventDefault();
+    procesarONoGuardarNota();
+  });
+
+  const btnSincro = document.getElementById('btnSincronizar');
+  if (btnSincro) btnSincro.addEventListener('click', (e) => {
+    e.preventDefault();
+    sincronizarNotasPendientes();
+  });
+
+  const sortSelect = document.getElementById('sortSelect');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      aplicarOrdenYRenderizar(e.target.value);
+    });
+  }
+
+  actualizarContadorPendientes();
+  activarGuardadoEnTiempoReal();
+
+  window.addEventListener('online', () => {
+    sincronizarNotasPendientes();
+  });
+});
+
+async function guardarRegistro(event) {
+  if (event) event.preventDefault();
+  if (enviandoRegistro) return;
+
+  const hoja = getApiarioSeleccionado();
+  const fecha = document.getElementById('inputFecha').value;
+  const colmenas = document.getElementById('inputColmenas').value;
+  const nucleos = document.getElementById('inputNucleos').value;
+  const tarea = document.getElementById('inputTarea').value.trim();
+  const obs = document.getElementById('inputObs').value.trim();
+
+  if (!hoja) return alert("Por favor, selecciona un apiario primero.");
+  if (!fecha) return alert("Por favor, selecciona una fecha.");
+  if (!tarea) return alert("Por favor, ingresa el detalle de la tarea.");
+
+  const payload = {
+    hoja: hoja,
+    action: editMode ? "edit" : "add",
+    Fecha: fecha,
+    Colmenas: colmenas,
+    Núcleos: nucleos,
+    Tarea: tarea,
+    Observaciones: obs
+  };
+
+  const btnGuardar = document.querySelector('#formRegistro .btn-primary');
+  setCargando(btnGuardar, true, "⏳ Guardando...");
+
+  await enviarPeticion(payload);
+  setCargando(btnGuardar, false);
+}
+
 function mostrarFormulario() {
   editMode = false;
   document.getElementById('formTitle').innerText = "Nuevo Registro";
   document.getElementById('inputFecha').disabled = false;
   limpiarFormulario();
-  document.getElementById('formRegistro').style.display = 'block';
+
+  const modal = document.getElementById('modalFormRegistro');
+  const form = document.getElementById('formRegistro');
+  
+  if (modal) modal.style.display = 'flex';
+  if (form) form.style.display = 'block';
 }
 
 function ocultarFormulario() {
+  const modal = document.getElementById('modalFormRegistro');
   const form = document.getElementById('formRegistro');
-  if (form) form.style.display = 'none';
-}
 
-function limpiarFormulario() {
-  document.getElementById('inputFecha').value = new Date().toISOString().split('T')[0];
-  
-  const ultimoEstado = obtenerUltimoEstadoApiario(registrosGlobales);
-  document.getElementById('inputColmenas').value = ultimoEstado.colmenas;
-  document.getElementById('inputNucleos').value = ultimoEstado.nucleos;
-  document.getElementById('inputTarea').value = "";
-  document.getElementById('inputObs').value = "";
+  if (modal) modal.style.display = 'none';
+  if (form) form.style.display = 'none';
 }
 
 function prepararEdicion(item) {
   editMode = true;
-  
   const fecha = item.fecha || item.Fecha || "";
   
   registroEditandoFecha = fecha;
@@ -292,8 +618,20 @@ function prepararEdicion(item) {
   document.getElementById('inputTarea').value = item.tarea || item.Tarea || "";
   document.getElementById('inputObs').value = item.obs || item.Observaciones || "";
   
-  document.getElementById('formRegistro').style.display = 'block';
-  document.getElementById('formRegistro').scrollIntoView({ behavior: 'smooth' });
+  const modal = document.getElementById('modalFormRegistro');
+  const form = document.getElementById('formRegistro');
+
+  if (modal) modal.style.display = 'flex';
+  if (form) form.style.display = 'block';
+}
+
+function limpiarFormulario() {
+  document.getElementById('inputFecha').value = new Date().toISOString().split('T')[0];
+  const ultimoEstado = obtenerUltimoEstadoApiario(registrosGlobales);
+  document.getElementById('inputColmenas').value = ultimoEstado.colmenas;
+  document.getElementById('inputNucleos').value = ultimoEstado.nucleos;
+  document.getElementById('inputTarea').value = "";
+  document.getElementById('inputObs').value = "";
 }
 
 async function eliminarRegistro(fecha) {
@@ -301,13 +639,7 @@ async function eliminarRegistro(fecha) {
   if (!confirm(`¿Seguro que deseas eliminar el registro de la fecha ${fecha}?`)) return;
 
   const hoja = getApiarioSeleccionado();
-  const payload = {
-    hoja: hoja,
-    action: "delete",
-    Fecha: fecha
-  };
-
-  await enviarPeticion(payload);
+  await enviarPeticion({ hoja: hoja, action: "delete", Fecha: fecha });
 }
 
 async function enviarPeticion(payload) {
@@ -323,7 +655,6 @@ async function enviarPeticion(payload) {
     });
     
     const result = await response.json();
-    
     if (result.error) {
       alert("Error: " + result.error);
     } else {
@@ -336,135 +667,6 @@ async function enviarPeticion(payload) {
     alert("Error de conexión o al procesar la respuesta.");
   } finally {
     enviandoRegistro = false;
-  }
-}
-
-// ==========================================
-// OBTENER Y SELECCIONAR APIARIO ACTIVO
-// ==========================================
-function getApiarioSeleccionado() {
-  const select = document.getElementById('sheetSelect');
-  
-  if (select && select.value) {
-    return select.value;
-  }
-  
-  const selectText = document.getElementById('selectText');
-  if (selectText) {
-    const textoHeader = selectText.textContent.trim();
-    if (textoHeader && !textoHeader.includes('Cargando') && !textoHeader.includes('Error')) {
-      return textoHeader;
-    }
-  }
-
-  if (listaHojasOriginal && listaHojasOriginal.length > 0) {
-    return ordenPersonalizado.length > 0 ? ordenPersonalizado[0] : listaHojasOriginal[0];
-  }
-
-  return "";
-}
-
-function seleccionarApiarioCustom(nombreApiario) {
-  const selectOculto = document.getElementById('sheetSelect');
-  if (selectOculto) selectOculto.value = nombreApiario;
-
-  const selectText = document.getElementById('selectText');
-  if (selectText) {
-    selectText.className = '';
-    selectText.textContent = nombreApiario;
-  }
-
-  const options = document.getElementById('customSelectOptions');
-  if (options) {
-    options.style.display = 'none';
-    options.classList.remove('active');
-  }
-
-  cargarDatos(nombreApiario);
-}
-
-// ==========================================
-// RENDERIZADO DE SELECTOR DE APIARIOS
-// ==========================================
-function aplicarOrdenYRenderizar(criterio) {
-  const selectOculto = document.getElementById('sheetSelect');
-  const customOptions = document.getElementById('customSelectOptions');
-  if (!selectOculto || !customOptions || !listaHojasOriginal || listaHojasOriginal.length === 0) return;
-
-  // 1. Guardar la selección actual antes de limpiar el DOM
-  let valorSeleccionado = (typeof getApiarioSeleccionado === 'function') 
-    ? getApiarioSeleccionado() 
-    : selectOculto.value;
-
-  let hojasOrdenadas = [...listaHojasOriginal];
-
-  // 2. Ordenar las hojas según el criterio
-  if (criterio === 'alpha-asc') {
-    hojasOrdenadas.sort((a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' }));
-  } else if (criterio === 'alpha-desc') {
-    hojasOrdenadas.sort((a, b) => b.localeCompare(a, 'es', { numeric: true, sensitivity: 'base' }));
-  } else if (criterio === 'custom' && ordenPersonalizado.length > 0) {
-    hojasOrdenadas.sort((a, b) => {
-      let idxA = ordenPersonalizado.indexOf(a);
-      let idxB = ordenPersonalizado.indexOf(b);
-      if (idxA === -1) idxA = 999;
-      if (idxB === -1) idxB = 999;
-      return idxA - idxB;
-    });
-  }
-
-  // 3. Limpiar elementos previos
-  selectOculto.innerHTML = '';
-  customOptions.innerHTML = '';
-
-  // 4. Crear cabecera móvil con botón de cierre seguro
-  const mobileHeader = document.createElement('div');
-  mobileHeader.className = 'mobile-select-header';
-  mobileHeader.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: #d97706; color: white; border-radius: 4px 4px 0 0;";
-  mobileHeader.innerHTML = `
-    <span>Seleccionar Apiario</span>
-    <button type="button" id="btnCerrarSelectorCustom" style="background:none; border:none; color:white; font-size:1.2rem; cursor:pointer; padding: 0 0.5rem;">✕</button>
-  `;
-  customOptions.appendChild(mobileHeader);
-
-  // Evento directo de cierre sin recargar nada
-  const btnCerrar = mobileHeader.querySelector('#btnCerrarSelectorCustom');
-  if (btnCerrar) {
-    btnCerrar.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      customOptions.style.display = 'none';
-      customOptions.classList.remove('active');
-    });
-  }
-
-  // 5. Establecer valor por defecto si no había ninguno
-  if (!valorSeleccionado && hojasOrdenadas.length > 0) {
-    valorSeleccionado = hojasOrdenadas[0];
-  }
-
-  // 6. Generar opciones en el select oculto y en el customOptions
-  hojasOrdenadas.forEach((hoja, index) => {
-    const optionObj = document.createElement('option');
-    optionObj.value = hoja;
-    optionObj.textContent = hoja;
-    selectOculto.appendChild(optionObj);
-
-    const div = document.createElement('div');
-    const claseColor = (index % 2 === 0) ? 'opcion-amarilla' : 'opcion-azul';
-    div.className = `custom-option ${claseColor}`;
-    div.style.cssText = "padding: 0.75rem; cursor: pointer; border-bottom: 1px solid #f1f5f9;";
-    div.textContent = hoja;
-    div.onclick = () => seleccionarApiarioCustom(hoja);
-
-    customOptions.appendChild(div);
-  });
-
-  // 7. Restablecer la selección previa
-  if (valorSeleccionado && hojasOrdenadas.includes(valorSeleccionado)) {
-    selectOculto.value = valorSeleccionado;
-    const selectText = document.getElementById('selectText');
-    if (selectText) selectText.textContent = valorSeleccionado;
   }
 }
 
@@ -512,7 +714,7 @@ async function procesarONoGuardarNota() {
   } catch (err) {
     guardarEnLocalStorage(texto, hoja);
     if (inputTexto) inputTexto.value = "";
-    alert("⚠️ Fallo de conexión. Guardado en el dispositivo.");
+    alert("⚠ Fallo de conexión. Guardado en el dispositivo.");
   } finally {
     enviandoRegistro = false;
     setCargando(btnGuardarNota, false);
@@ -521,11 +723,7 @@ async function procesarONoGuardarNota() {
 
 function guardarEnLocalStorage(texto, hoja) {
   const pendientes = JSON.parse(localStorage.getItem('notas_apiario_pendientes') || '[]');
-  pendientes.push({
-    texto: texto,
-    hoja: hoja,
-    fechaRegistro: new Date().toISOString()
-  });
+  pendientes.push({ texto: texto, hoja: hoja, fechaRegistro: new Date().toISOString() });
   localStorage.setItem('notas_apiario_pendientes', JSON.stringify(pendientes));
   actualizarContadorPendientes();
 }
@@ -536,15 +734,8 @@ async function sincronizarNotasPendientes() {
   const pendientes = JSON.parse(localStorage.getItem('notas_apiario_pendientes') || '[]');
   const btnSincro = document.getElementById('btnSincronizar');
 
-  if (pendientes.length === 0) {
-    alert("No hay notas pendientes por sincronizar.");
-    return;
-  }
-
-  if (!navigator.onLine) {
-    alert("Aún no tienes conexión a internet para sincronizar.");
-    return;
-  }
+  if (pendientes.length === 0) return alert("No hay notas pendientes por sincronizar.");
+  if (!navigator.onLine) return alert("Aún no tienes conexión a internet para sincronizar.");
 
   enviandoRegistro = true;
   if (btnSincro) {
@@ -561,21 +752,13 @@ async function sincronizarNotasPendientes() {
         method: 'POST',
         redirect: 'follow',
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ 
-          action: "addFromVoice", 
-          texto: nota.texto,
-          hoja: nota.hoja || getApiarioSeleccionado()
-        })
+        body: JSON.stringify({ action: "addFromVoice", texto: nota.texto, hoja: nota.hoja || getApiarioSeleccionado() })
       });
 
       const res = await response.json();
-      if (!res.error) {
-        exitosos++;
-      } else {
-        restantes.push(nota);
-      }
+      if (!res.error) exitosos++;
+      else restantes.push(nota);
     } catch (err) {
-      console.error("Error sincronizando nota individual:", err);
       restantes.push(nota);
     }
   }
@@ -598,13 +781,11 @@ async function sincronizarNotasPendientes() {
 function actualizarContadorPendientes() {
   const pendientes = JSON.parse(localStorage.getItem('notas_apiario_pendientes') || '[]');
   const cantSpan = document.getElementById('cantPendientes');
-  if (cantSpan) {
-    cantSpan.innerText = pendientes.length;
-  }
+  if (cantSpan) cantSpan.innerText = pendientes.length;
 }
 
 // ==========================================
-// AUTO-GUARDADO EN TIEMPO REAL (SOLO EDICIÓN)
+// AUTO-GUARDADO Y REORDENAMIENTO
 // ==========================================
 let timerAutoGuardado = null;
 
@@ -615,7 +796,6 @@ function activarGuardadoEnTiempoReal() {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('input', () => {
-        // Solamente guarda de fondo si el usuario está en MODO EDICIÓN
         if (!editMode) return;
 
         const fecha = document.getElementById('inputFecha').value;
@@ -663,14 +843,9 @@ async function guardarRegistroSilencioso() {
     });
 
     const result = await response.json();
-
-    if (!result.error) {
-      mostrarEstadoGuardado("✅ Guardado automáticamente");
-    } else {
-      mostrarEstadoGuardado("⚠️ Error al auto-guardar");
-    }
+    if (!result.error) mostrarEstadoGuardado("✅ Guardado automáticamente");
+    else mostrarEstadoGuardado("⚠️ Error al auto-guardar");
   } catch (err) {
-    console.error("Error en auto-guardado:", err);
     mostrarEstadoGuardado("📶 Sin conexión");
   } finally {
     enviandoRegistro = false;
@@ -689,84 +864,11 @@ function mostrarEstadoGuardado(mensaje) {
   statusEl.innerText = mensaje;
 }
 
-// ==========================================
-// CARGA Y GESTIÓN DE HOJAS / APIARIOS
-// ==========================================
-async function cargarListaHojas() {
-  const selectText = document.getElementById('selectText');
-  
-  if (selectText) {
-    selectText.className = 'select-text-loading';
-    selectText.innerHTML = `<span class="spinner"></span> Cargando apiarios...`;
-  }
-
-  try {
-    const response = await fetch(`${SCRIPT_URL}?action=getSheets`);
-    const text = await response.text();
-    
-    if (text.trim().startsWith("<")) {
-      throw new Error("Respuesta no válida del servidor.");
-    }
-
-    const data = JSON.parse(text);
-
-    if (data.error) throw new Error(data.error);
-
-    if (Array.isArray(data.sheets) && data.sheets.length > 0) {
-      listaHojasOriginal = data.sheets;
-
-      const ordenServidor = Array.isArray(data.customOrder) ? data.customOrder : [];
-      const ordenLocal = JSON.parse(localStorage.getItem('orden_apiarios_custom') || '[]');
-      const ordenGuardado = ordenServidor.length > 0 ? ordenServidor : ordenLocal;
-      
-      if (ordenGuardado.length > 0) {
-        const hojasSet = new Set(listaHojasOriginal);
-        const apiariosValidos = ordenGuardado.filter(hoja => hojasSet.has(hoja));
-        const apiariosNuevos = listaHojasOriginal.filter(hoja => !ordenGuardado.includes(hoja));
-        ordenPersonalizado = [...apiariosValidos, ...apiariosNuevos];
-      } else {
-        ordenPersonalizado = [...listaHojasOriginal];
-      }
-
-      const sortSelect = document.getElementById('sortSelect');
-      const criterioActual = sortSelect ? sortSelect.value : 'custom';
-
-      aplicarOrdenYRenderizar(criterioActual);
-
-      const primerApiario = ordenPersonalizado[0] || data.sheets[0];
-      if (selectText) {
-        selectText.className = '';
-        selectText.textContent = primerApiario;
-      }
-
-      cargarDatos(primerApiario);
-
-    } else {
-      if (selectText) {
-        selectText.className = '';
-        selectText.textContent = 'Sin apiarios disponibles';
-      }
-    }
-  } catch (error) {
-    console.error("Error al obtener apiarios:", error);
-    if (selectText) {
-      selectText.className = '';
-      selectText.textContent = '⚠️ Error al cargar apiarios';
-    }
-  }
-}
-
-// ==========================================
-// REORDENAMIENTO MANUAL DE APIARIOS
-// ==========================================
 function reordenarHojas() {
   const modal = document.getElementById('modalReordenar');
   const lista = document.getElementById('listaOrdenable');
 
-  if (!listaHojasOriginal || listaHojasOriginal.length === 0) {
-    alert("No hay apiarios cargados para reordenar.");
-    return;
-  }
+  if (!listaHojasOriginal || listaHojasOriginal.length === 0) return alert("No hay apiarios cargados.");
 
   lista.innerHTML = '';
   const listaParaMostrar = ordenPersonalizado.length > 0 ? ordenPersonalizado : listaHojasOriginal;
@@ -810,31 +912,28 @@ async function guardarOrdenManual() {
   if (nuevoOrden.length === 0) return;
 
   ordenPersonalizado = nuevoOrden;
-  listaHojasOriginal = [...nuevoOrden];
+  localStorage.setItem('orden_apiarios_custom', JSON.stringify(ordenPersonalizado));
 
+  // Renderizar la lista con el nuevo orden localmente
   const sortSelect = document.getElementById('sortSelect');
-  if (sortSelect) sortSelect.value = 'custom';
-  
-  aplicarOrdenYRenderizar('custom');
+  const criterio = sortSelect ? sortSelect.value : 'custom';
+  aplicarOrdenYRenderizar(criterio);
+
   cerrarModalOrden();
 
-  localStorage.setItem('orden_apiarios_custom', JSON.stringify(nuevoOrden));
-
+  // Guardar en el backend (Google Apps Script) de forma transparente
   try {
     await fetch(SCRIPT_URL, {
       method: "POST",
       redirect: "follow",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "saveSheetsOrder", order: nuevoOrden })
+      body: JSON.stringify({ action: "saveCustomOrder", order: ordenPersonalizado })
     });
   } catch (e) {
-    console.log("Orden guardado localmente en el dispositivo.");
+    console.error("Error al guardar orden en servidor:", e);
   }
 }
 
-// ==========================================
-// UTILIDADES
-// ==========================================
 function setCargando(elemento, cargando, textoCargando = "⏳ Procesando...") {
   if (!elemento) return;
   
@@ -853,13 +952,5 @@ function setCargando(elemento, cargando, textoCargando = "⏳ Procesando...") {
     if (elemento.dataset.originalText) {
       elemento.innerHTML = elemento.dataset.originalText;
     }
-  }
-}
-
-function cerrarSelectorCustom() {
-  const customOptions = document.getElementById('customSelectOptions');
-  if (customOptions) {
-    customOptions.style.display = 'none';
-    customOptions.classList.remove('active');
   }
 }

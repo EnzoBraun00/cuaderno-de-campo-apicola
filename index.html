@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Gestión Apícola Multi-Apiario</title>
 
   <!-- Favicon para la pestaña del navegador -->
@@ -60,13 +60,23 @@
       📲 Instalar App en el Celular
     </button>
 
-    <!-- Panel Principal de Selección y Orden de Apiarios -->
+    <!-- Panel Principal de Selección de Apiarios -->
     <section class="card panel-control">
       <div class="panel-header">
-        <label class="section-label">Apiario Actual</label>
+        <label class="section-label">🐝 Seleccionar Apiario</label>
         <button class="btn-icon-text" onclick="reordenarHojas()" title="Reordenar Lista">
           ↕️ Reordenar
         </button>
+      </div>
+
+      <!-- Filtros y Búsqueda de Apiarios -->
+      <div class="bee-filter-bar">
+        <input type="text" id="beeSearchInput" oninput="filtrarApiariosCards()" placeholder="🔍 Buscar apiario..." class="bee-search-input">
+        <div class="bee-filter-chips">
+          <button class="bee-chip active" onclick="filtrarCategoriaApiarios('todos', this)">Todos</button>
+          <button class="bee-chip" onclick="filtrarCategoriaApiarios('alerta', this)">🚨 Revisar</button>
+          <button class="bee-chip" onclick="filtrarCategoriaApiarios('alta', this)">⚡ Alta Actividad</button>
+        </div>
       </div>
 
       <!-- Control Oculto de Criterio de Ordenamiento para compatibilidad JS -->
@@ -76,22 +86,15 @@
         <option value="alpha-desc">Z-A</option>
       </select>
 
-      <!-- Selector desplegable personalizado para móvil (Ancho Completo y Colores) -->
-      <div class="custom-select-wrapper">
-        <div id="customSelectTrigger" class="custom-select-trigger">
-          <!-- Estado de Carga por defecto -->
-          <span id="selectText" class="select-text-loading">
-            <span class="spinner"></span> Cargando apiarios...
-          </span>
-          <span class="arrow-icon">▼</span>
-        </div>
-        
-        <div id="customSelectOptions" class="custom-select-options" style="display: none;">
-          <!-- Las opciones de los apiarios se inyectan dinámicamente -->
+      <!-- Lista Scrollable de Tarjetas de Apiarios (Abejas) -->
+      <div id="beeApiariosContainer" class="bee-apiarios-scroll-container">
+        <!-- Estado de carga por defecto -->
+        <div class="bee-loading-state">
+          <span class="spinner"></span> Cargando apiarios y métricas...
         </div>
       </div>
 
-      <!-- Select nativo oculto para mantener compatibilidad con script.js -->
+      <!-- Select nativo oculto para mantener compatibilidad con el backend -->
       <select id="sheetSelect" onchange="cargarDatos()" style="display: none;">
         <option value="">Cargando apiarios...</option>
       </select>
@@ -100,59 +103,55 @@
     <!-- Barra del Apiario Activo y Botón Nueva Tarea -->
     <div id="infoSection" class="info-section" style="display:none;">
       <div class="apiario-header">
-        <div id="apiarioNombre" class="info-bar" style="margin-bottom: 0.75rem;"></div>
+        <div id="apiarioNombre" class="info-bar"></div>
         <button class="btn btn-primary btn-new-task" onclick="mostrarFormulario()">
           ➕ Agregar Nueva Tarea
         </button>
       </div>
-
-      <!-- Campo de búsqueda / filtro de registros en tiempo real 
-      <div style="margin-top: 0.75rem;">
-        <input type="text" id="searchInput" onkeyup="filtrarRegistros()" placeholder="🔍 Buscar por tarea, fecha o nota..." style="width: 100%; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 0.9rem;">
-      </div>
-    </div> -->
-
-    <!-- Formulario Agregar / Editar Registro -->
-    <div class="form-container card" id="formRegistro" style="display:none;">
-      <div class="form-header" style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="display:flex; align-items:center;">
-          <h3 id="formTitle" style="margin:0;">Nuevo Registro de Tarea</h3>
-          <span id="autoSaveStatus" style="font-size: 0.8rem; margin-left: 0.75rem;"></span>
-        </div>
-        <button type="button" class="btn-close" onclick="ocultarFormulario()">✕</button>
-      </div>
-
-      <div class="form-grid">
-        <div class="form-group">
-          <label for="inputFecha">Fecha</label>
-          <input type="date" id="inputFecha">
-        </div>
-        <div class="form-group flex-row">
-          <div class="flex-1">
-            <label for="inputColmenas">Colmenas</label>
-            <input type="number" id="inputColmenas" value="0" min="0">
-          </div>
-          <div class="flex-1">
-            <label for="inputNucleos">Núcleos</label>
-            <input type="number" id="inputNucleos" value="0" min="0">
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="inputTarea">Tarea Realizada</label>
-          <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Alimentación, Inspección">
-        </div>
-        <div class="form-group">
-          <label for="inputObs">Observaciones</label>
-          <textarea id="inputObs" rows="3" placeholder="Detalles o notas relevantes de la inspección..."></textarea>
-        </div>
-      </div>
-
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="ocultarFormulario()">Cerrar</button>
-        <button type="button" class="btn btn-primary flex-1" onclick="guardarRegistro()">Guardar Manualmente</button>
-      </div>
     </div>
 
+    <!-- Formulario Agregar / Editar Registro -->
+    <div id="modalFormRegistro" class="modal-overlay" style="display:none;">
+      <div class="form-container card" id="formRegistro" style="display:none;">
+        <div class="form-header">
+          <div style="display:flex; align-items:center;">
+            <h3 id="formTitle" style="margin:0;">Nuevo Registro de Tarea</h3>
+            <span id="autoSaveStatus" style="font-size: 0.8rem; margin-left: 0.75rem;"></span>
+          </div>
+          <button type="button" class="btn-close" onclick="ocultarFormulario()">✕</button>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="inputFecha">Fecha</label>
+            <input type="date" id="inputFecha">
+          </div>
+          <div class="form-group flex-row">
+            <div class="flex-1">
+              <label for="inputColmenas">Colmenas</label>
+              <input type="number" id="inputColmenas" value="0" min="0">
+            </div>
+            <div class="flex-1">
+              <label for="inputNucleos">Núcleos</label>
+              <input type="number" id="inputNucleos" value="0" min="0">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="inputTarea">Tarea Realizada</label>
+            <input type="text" id="inputTarea" placeholder="Ej: Curación, Cosecha, Alimentación, Inspección">
+          </div>
+          <div class="form-group">
+            <label for="inputObs">Observaciones</label>
+            <textarea id="inputObs" rows="3" placeholder="Detalles o notas relevantes de la inspección..."></textarea>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="ocultarFormulario()">Cerrar</button>
+          <button type="button" class="btn btn-primary flex-1" onclick="guardarRegistro()">Guardar Manualmente</button>
+        </div>
+      </div>
+    </div>
     <!-- Lista de Registros -->
     <div id="listaRegistros" class="registros-list"></div>
   </main>
